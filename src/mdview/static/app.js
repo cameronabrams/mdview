@@ -109,10 +109,12 @@ async function main() {
       btn.disabled = select.disabled;
       btn.addEventListener("click", () => {
         const coords = select.value;
+        // mol2 carries the topology's explicit bonds, so Mol* uses the real
+        // connectivity instead of guessing it from (often distorted) distances.
         const url =
           `/api/convert/${encodeURI(topo.relpath)}` +
-          `?coords=${encodeURIComponent(coords)}&format=cif`;
-        loadUrl(url, "mmcif", `${topo.relpath} + ${coords}`, wrap);
+          `?coords=${encodeURIComponent(coords)}&format=mol2`;
+        loadUrl(url, "mol2", `${topo.relpath} + ${coords}`, wrap);
       });
       pair.append(select, btn);
 

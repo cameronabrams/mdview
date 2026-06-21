@@ -14,10 +14,13 @@ Mol\* reads natively: `.pdb` `.ent` `.pqr` `.cif`/`.mmcif` `.gro`.
 
 **Phase 2: server-side conversion (optional `convert` extra).** Topology-only
 formats — CHARMM/NAMD `.psf`, Amber `.prmtop`/`.parm7` — are paired with a
-coordinate file (`.pdb`/`.gro`/`.crd`/`.rst7`/…) and merged to mmCIF/PDB via
-[ParmEd](https://parmed.github.io/ParmEd/) so they display as a single
-structure. In the UI these appear under **Topologies**, with a coordinate-file
-picker. Enable with `uv sync --extra convert`.
+coordinate file (`.pdb`/`.gro`/`.crd`/`.rst7`/…) and merged via
+[ParmEd](https://parmed.github.io/ParmEd/) into **MOL2** so they display as a
+single structure. MOL2 carries the topology's explicit `@<TRIPOS>BOND` block, so
+Mol\* draws the real connectivity instead of guessing bonds from distance (which
+misfires on distorted MD coordinates). In the UI these appear under
+**Topologies**, with a coordinate-file picker. Enable with
+`uv sync --extra convert`.
 
 Trajectory playback (PSF+DCD / XTC) is planned — see *Roadmap*.
 
@@ -61,9 +64,10 @@ then open <http://localhost:8000> in your browser.
   root, plus `convert_available`. Recursive, extension-allowlisted.
 - `GET /api/file/{relpath}` — serves one structure's bytes (path-traversal
   guarded; restricted to the data root).
-- `GET /api/convert/{relpath}?coords={relpath}&format=cif|pdb` — merges a
-  topology with a coordinate file via ParmEd and returns mmCIF/PDB (both paths
-  guarded to the data root). Requires the `convert` extra.
+- `GET /api/convert/{relpath}?coords={relpath}&format=mol2|cif|pdb` — merges a
+  topology with a coordinate file via ParmEd and returns MOL2 (default; preserves
+  bonds), or mmCIF/PDB (which drop connectivity). Both paths guarded to the data
+  root. Requires the `convert` extra.
 - `/` — the single-page Mol\* viewer; the vendored Mol\* build lives under
   `src/mdview/static/vendor/molstar/` (no frontend build step required).
 

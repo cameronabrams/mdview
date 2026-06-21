@@ -16,7 +16,13 @@ import tempfile
 from pathlib import Path
 
 # Output formats Mol* loads happily, mapped to the suffix ParmEd writes for each.
-OUTPUT_FORMATS = {"cif": ".cif", "pdb": ".pdb"}
+#
+# mol2 is the default and the right choice for a topology: it carries an explicit
+# @<TRIPOS>BOND block, so Mol* uses the PSF/prmtop connectivity verbatim instead
+# of guessing bonds from distance (which misfires on distorted MD coordinates).
+# cif/pdb are offered for export but DROP connectivity — ParmEd writes no CONECT
+# or _struct_conn, so Mol* would distance-perceive bonds from those.
+OUTPUT_FORMATS = {"mol2": ".mol2", "cif": ".cif", "pdb": ".pdb"}
 
 
 class ConvertUnavailable(RuntimeError):
@@ -36,16 +42,19 @@ def parmed_available() -> bool:
     return True
 
 
-def convert(top_path: Path, coord_path: Path | None = None, fmt: str = "cif") -> str:
+def convert(top_path: Path, coord_path: Path | None = None, fmt: str = "mol2") -> str:
     """Merge a topology with coordinates and return it as ``fmt`` text.
 
     ``top_path`` is any ParmEd-readable file; ``coord_path``, if given, supplies
-    the coordinates (its atom count must match the topology). Raises
+    the coordinates (its atom count must match the topology). Defaults to mol2 so
+    the topology's explicit bonds survive (see ``OUTPUT_FORMATS``). Raises
     ``ConvertUnavailable`` if ParmEd is missing and ``ConvertError`` on any
     read/pair/write failure (including a topology left without coordinates).
     """
     if fmt not in OUTPUT_FORMATS:
-        raise ConvertError(f"unsupported output format: {fmt!r} (use cif or pdb)")
+        raise ConvertError(
+            f"unsupported output format: {fmt!r} (use {', '.join(OUTPUT_FORMATS)})"
+        )
 
     try:
         import parmed as pmd

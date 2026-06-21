@@ -60,11 +60,12 @@ def create_app(settings: Settings) -> FastAPI:
         return FileResponse(resolved, media_type=media_type, filename=resolved.name)
 
     @app.get("/api/convert/{relpath:path}")
-    def api_convert(relpath: str, coords: str | None = None, format: str = "cif") -> Response:
-        """Merge a topology (+ optional coordinate file) and return mmCIF/PDB.
+    def api_convert(relpath: str, coords: str | None = None, format: str = "mol2") -> Response:
+        """Merge a topology (+ optional coordinate file) and return mol2/mmCIF/PDB.
 
-        Used for formats Mol* can't load directly (e.g. PSF/prmtop). Both paths
-        are path-traversal guarded against the data root.
+        Used for formats Mol* can't load directly (e.g. PSF/prmtop). Defaults to
+        mol2 so the topology's explicit bonds are preserved. Both paths are
+        path-traversal guarded against the data root.
         """
         top = resolve_within_root(settings.root, relpath)
         if top is None:
@@ -80,7 +81,11 @@ def create_app(settings: Settings) -> FastAPI:
             raise HTTPException(status_code=501, detail=str(exc)) from exc
         except ConvertError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
-        media_type = "chemical/x-mmcif" if format == "cif" else "chemical/x-pdb"
+        media_type = {
+            "mol2": "chemical/x-mol2",
+            "cif": "chemical/x-mmcif",
+            "pdb": "chemical/x-pdb",
+        }.get(format, "text/plain")
         return Response(content=text, media_type=media_type)
 
     # The SPA and vendored Mol* assets. html=True serves index.html at "/".
