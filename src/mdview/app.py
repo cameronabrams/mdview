@@ -5,12 +5,18 @@ from __future__ import annotations
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from . import __version__
 from .config import CONTENT_TYPES, Settings
-from .files import list_structures, resolve_within_root
+from .convert import (
+    ConvertError,
+    ConvertUnavailable,
+    convert,
+    parmed_available,
+)
+from .files import resolve_within_root, scan
 
 STATIC_DIR = Path(__file__).parent / "static"
 
@@ -22,8 +28,12 @@ def create_app(settings: Settings) -> FastAPI:
 
     @app.get("/api/files")
     def api_files() -> dict:
-        """List loadable structures under the data root."""
-        return {"root": str(settings.root), "files": list_structures(settings)}
+        """List structures, topologies, and coordinate files under the data root."""
+        return {
+            "root": str(settings.root),
+            "convert_available": parmed_available(),
+            **scan(settings),
+        }
 
     @app.get("/api/file/{relpath:path}")
     def api_file(relpath: str) -> FileResponse:
@@ -35,6 +45,30 @@ def create_app(settings: Settings) -> FastAPI:
             raise HTTPException(status_code=415, detail="unsupported file type")
         media_type = CONTENT_TYPES.get(resolved.suffix.lower(), "text/plain")
         return FileResponse(resolved, media_type=media_type, filename=resolved.name)
+
+    @app.get("/api/convert/{relpath:path}")
+    def api_convert(relpath: str, coords: str | None = None, format: str = "cif") -> Response:
+        """Merge a topology (+ optional coordinate file) and return mmCIF/PDB.
+
+        Used for formats Mol* can't load directly (e.g. PSF/prmtop). Both paths
+        are path-traversal guarded against the data root.
+        """
+        top = resolve_within_root(settings.root, relpath)
+        if top is None:
+            raise HTTPException(status_code=404, detail="file not found")
+        coord_path = None
+        if coords:
+            coord_path = resolve_within_root(settings.root, coords)
+            if coord_path is None:
+                raise HTTPException(status_code=404, detail="coordinate file not found")
+        try:
+            text = convert(top, coord_path, fmt=format)
+        except ConvertUnavailable as exc:
+            raise HTTPException(status_code=501, detail=str(exc)) from exc
+        except ConvertError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        media_type = "chemical/x-mmcif" if format == "cif" else "chemical/x-pdb"
+        return Response(content=text, media_type=media_type)
 
     # The SPA and vendored Mol* assets. html=True serves index.html at "/".
     app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="static")

@@ -30,3 +30,16 @@ def test_index_is_served(client):
     resp = client.get("/")
     assert resp.status_code == 200
     assert "mdview" in resp.text
+
+
+def test_lists_topologies_and_coordinates(client):
+    body = client.get("/api/files").json()
+    # PSF fixture is a topology; PDB fixtures are coordinate sources.
+    topologies = {t["relpath"] for t in body["topologies"]}
+    coordinates = {c["relpath"] for c in body["coordinates"]}
+    assert "alad_v.psf" in topologies
+    assert {"alad_v.pdb", "sample.pdb"} <= coordinates
+    # convert_available reflects whether the parmed extra is importable.
+    from mdview.convert import parmed_available
+
+    assert body["convert_available"] == parmed_available()

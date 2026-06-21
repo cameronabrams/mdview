@@ -17,15 +17,28 @@
     #sidebar h1 { font-size: 15px; margin: 0; padding: 12px 14px; border-bottom: 1px solid #2c2f38; }
     #sidebar h1 small { color: #8b909a; font-weight: normal; }
     #root-label { padding: 8px 14px; color: #8b909a; font-size: 12px; word-break: break-all; }
-    #file-list { list-style: none; margin: 0; padding: 0; overflow-y: auto; flex: 1; }
-    #file-list li {
+    #lists { overflow-y: auto; flex: 1; }
+    .section-head { padding: 10px 14px 4px; color: #8b909a; font-size: 11px;
+      text-transform: uppercase; letter-spacing: 0.04em; border-top: 1px solid #2c2f38; }
+    ul.file-list { list-style: none; margin: 0; padding: 0; }
+    ul.file-list li {
       padding: 7px 14px; cursor: pointer; border-bottom: 1px solid #23262e;
       display: flex; justify-content: space-between; gap: 8px;
     }
-    #file-list li:hover { background: #262932; }
-    #file-list li.active { background: #2f3340; color: #fff; }
-    #file-list .fmt { color: #8b909a; font-size: 11px; text-transform: uppercase; flex: 0 0 auto; }
-    #file-list .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    ul.file-list li:hover { background: #262932; }
+    ul.file-list li.active { background: #2f3340; color: #fff; }
+    ul.file-list .fmt { color: #8b909a; font-size: 11px; text-transform: uppercase; flex: 0 0 auto; }
+    ul.file-list .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .topo { padding: 7px 14px; border-bottom: 1px solid #23262e; }
+    .topo .name { display: flex; justify-content: space-between; gap: 8px; }
+    .topo .name span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .topo .pair { display: flex; gap: 6px; margin-top: 5px; }
+    .topo select { flex: 1; min-width: 0; background: #14161b; color: #d7dae0;
+      border: 1px solid #2c2f38; border-radius: 3px; padding: 3px; font-size: 12px; }
+    .topo button { background: #3a3f4d; color: #fff; border: none; border-radius: 3px;
+      padding: 3px 9px; cursor: pointer; font-size: 12px; }
+    .topo button:hover { background: #474d5e; }
+    .topo button:disabled { opacity: 0.5; cursor: not-allowed; }
     #status { padding: 8px 14px; color: #8b909a; font-size: 12px; border-top: 1px solid #2c2f38; }
     #viewer { position: relative; flex: 1; min-width: 0; }
   </style>
@@ -35,7 +48,16 @@
     <aside id="sidebar">
       <h1>mdview <small>MD viewer</small></h1>
       <div id="root-label">loading…</div>
-      <ul id="file-list"></ul>
+      <div id="lists">
+        <div id="files-section" hidden>
+          <div class="section-head">Structures</div>
+          <ul id="file-list" class="file-list"></ul>
+        </div>
+        <div id="topo-section" hidden>
+          <div class="section-head">Topologies (pair with coordinates)</div>
+          <div id="topo-list"></div>
+        </div>
+      </div>
       <div id="status">Select a structure to load.</div>
     </aside>
     <main id="viewer"></main>

@@ -1,0 +1,24 @@
+REMARK original generated coordinate pdb file
+ATOM      1  CL  ALADA   1      -9.604  16.907   7.960  1.00  0.00      A    C
+ATOM      2  HL1 ALADA   1      -9.931  17.333   7.117  1.00  0.00      A    H
+ATOM      3  HL2 ALADA   1      -9.463  17.605   8.662  1.00  0.00      A    H
+ATOM      4  HL3 ALADA   1     -10.267  16.231   8.281  1.00  0.00      A    H
+ATOM      5  CLP ALADA   1      -8.734  16.449   7.778  1.00  0.00      A    C
+ATOM      6  OL  ALADA   1      -8.407  16.023   8.621  1.00  0.00      A    O
+ATOM      7  NL  ALADA   1      -8.495  16.576   6.815  1.00  0.00      A    N
+ATOM      8  HL  ALADA   1      -8.823  17.001   5.971  1.00  0.00      A    H
+ATOM      9  CA  ALADA   1      -7.226  15.907   6.548  1.00  0.00      A    C
+ATOM     10  HA  ALADA   1      -7.334  14.857   6.793  1.00  0.00      A    H
+ATOM     11  CB  ALADA   1      -6.931  16.009   5.055  1.00  0.00      A    C
+ATOM     12  HB1 ALADA   1      -7.778  15.581   4.478  1.00  0.00      A    H
+ATOM     13  HB2 ALADA   1      -6.806  17.069   4.744  1.00  0.00      A    H
+ATOM     14  HB3 ALADA   1      -6.011  15.449   4.780  1.00  0.00      A    H
+ATOM     15  CRP ALADA   1      -6.043  16.429   7.383  1.00  0.00      A    C
+ATOM     16  OR  ALADA   1      -5.220  15.917   7.137  1.00  0.00      A    O
+ATOM     17  NR  ALADA   1      -6.366  17.161   7.983  1.00  0.00      A    N
+ATOM     18  HR  ALADA   1      -7.189  17.672   8.229  1.00  0.00      A    H
+ATOM     19  CR  ALADA   1      -5.598  17.500   8.526  1.00  0.00      A    C
+ATOM     20  HR1 ALADA   1      -4.893  17.850   7.909  1.00  0.00      A    H
+ATOM     21  HR2 ALADA   1      -5.921  18.232   9.125  1.00  0.00      A    H
+ATOM     22  HR3 ALADA   1      -5.229  16.749   9.073  1.00  0.00      A    H
+END

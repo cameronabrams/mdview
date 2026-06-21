@@ -9,8 +9,16 @@ with full rotate / zoom / select / measure / representation controls.
 
 ## Status
 
-**Phase 1 (MVP): static-structure inspection.** Loads single-structure formats
-that Mol\* reads natively: `.pdb` `.ent` `.pqr` `.cif`/`.mmcif` `.gro`.
+**Phase 1: static-structure inspection.** Loads single-structure formats that
+Mol\* reads natively: `.pdb` `.ent` `.pqr` `.cif`/`.mmcif` `.gro`.
+
+**Phase 2: server-side conversion (optional `convert` extra).** Topology-only
+formats — CHARMM/NAMD `.psf`, Amber `.prmtop`/`.parm7` — are paired with a
+coordinate file (`.pdb`/`.gro`/`.crd`/`.rst7`/…) and merged to mmCIF/PDB via
+[ParmEd](https://parmed.github.io/ParmEd/) so they display as a single
+structure. In the UI these appear under **Topologies**, with a coordinate-file
+picker. Enable with `uv sync --extra convert`.
+
 Trajectory playback (PSF+DCD / XTC) is planned — see *Roadmap*.
 
 ## Install
@@ -48,18 +56,19 @@ then open <http://localhost:8000> in your browser.
 
 ## How it works
 
-- `GET /api/files` — lists loadable structures under the data root (recursive,
-  extension-allowlisted).
+- `GET /api/files` — lists `files` (natively loadable), `topologies` (need
+  coordinates), and `coordinates` (usable as a coordinate source) under the data
+  root, plus `convert_available`. Recursive, extension-allowlisted.
 - `GET /api/file/{relpath}` — serves one structure's bytes (path-traversal
   guarded; restricted to the data root).
+- `GET /api/convert/{relpath}?coords={relpath}&format=cif|pdb` — merges a
+  topology with a coordinate file via ParmEd and returns mmCIF/PDB (both paths
+  guarded to the data root). Requires the `convert` extra.
 - `/` — the single-page Mol\* viewer; the vendored Mol\* build lives under
   `src/mdview/static/vendor/molstar/` (no frontend build step required).
 
 ## Roadmap
 
-- **Phase 2** — optional server-side conversion via [ParmEd](https://parmed.github.io/ParmEd/)
-  (`uv sync --extra convert`): normalize/merge topology+coordinates → mmCIF for
-  formats Mol\* can't read directly.
 - **Phase 3** — trajectory playback: load PSF+DCD / XTC / TRR via Mol\*'s
   topology+coordinates path, with server-side frame decimation for large DCDs.
 - **Phase 4** — optional Docker packaging.

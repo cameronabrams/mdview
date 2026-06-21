@@ -19,6 +19,27 @@ STATIC_EXTENSIONS: dict[str, str] = {
     ".gro": "gro",
 }
 
+# Topology-only formats: no coordinates of their own, so they must be paired with
+# a coordinate file and converted server-side (parmed) before display. Phase 2.
+TOPOLOGY_EXTENSIONS: dict[str, str] = {
+    ".psf": "psf",
+    ".prmtop": "amber",
+    ".parm7": "amber",
+}
+
+# Files that can supply coordinates for a topology. Includes the native
+# coordinate-bearing structures (.pdb/.gro) plus Amber coordinate/restart files.
+COORD_EXTENSIONS: dict[str, str] = {
+    ".pdb": "pdb",
+    ".ent": "pdb",
+    ".gro": "gro",
+    ".crd": "charmmcrd",
+    ".rst7": "amber",
+    ".inpcrd": "amber",
+    ".restrt": "amber",
+    ".ncrst": "amber",
+}
+
 # MIME types for serving raw structure bytes. Molecular formats are plain text;
 # the Mol* loader keys off the format we pass in JS, not the content-type, so
 # text/plain is a safe default that also renders sanely if opened directly.

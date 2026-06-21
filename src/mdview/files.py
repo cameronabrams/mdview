@@ -5,36 +5,51 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from .config import COORD_EXTENSIONS, TOPOLOGY_EXTENSIONS
+
 if TYPE_CHECKING:
     from .config import Settings
 
 
-def list_structures(settings: Settings) -> list[dict]:
-    """Walk the data root and return loadable structures, sorted by relpath.
+def scan(settings: Settings) -> dict[str, list[dict]]:
+    """Walk the data root once and bucket files into three lists.
 
-    Each entry: ``{"relpath": str, "size": int, "format": str}``. Only files
-    whose suffix is in the configured extension allowlist are returned. Hidden
-    files and directories (dot-prefixed) are skipped.
+    Returns ``{"files": [...], "topologies": [...], "coordinates": [...]}`` where
+    each entry is ``{"relpath", "size", "format"}``. A single file may appear in
+    more than one bucket (e.g. a ``.pdb`` is both natively loadable and usable as
+    a coordinate source). Hidden files/directories (dot-prefixed) are skipped;
+    results are sorted by relpath.
     """
     root = settings.root
-    out: list[dict] = []
+    files: list[dict] = []
+    topologies: list[dict] = []
+    coordinates: list[dict] = []
+
     for path in root.rglob("*"):
         if not path.is_file():
             continue
-        if any(part.startswith(".") for part in path.relative_to(root).parts):
+        rel = path.relative_to(root)
+        if any(part.startswith(".") for part in rel.parts):
             continue
-        fmt = settings.format_for(path.suffix)
-        if fmt is None:
-            continue
-        out.append(
-            {
-                "relpath": path.relative_to(root).as_posix(),
-                "size": path.stat().st_size,
-                "format": fmt,
-            }
-        )
-    out.sort(key=lambda e: e["relpath"])
-    return out
+        suffix = path.suffix.lower()
+        base = {"relpath": rel.as_posix(), "size": path.stat().st_size}
+
+        fmt = settings.format_for(suffix)
+        if fmt is not None:
+            files.append({**base, "format": fmt})
+        if suffix in TOPOLOGY_EXTENSIONS:
+            topologies.append({**base, "format": TOPOLOGY_EXTENSIONS[suffix]})
+        if suffix in COORD_EXTENSIONS:
+            coordinates.append({**base, "format": COORD_EXTENSIONS[suffix]})
+
+    for bucket in (files, topologies, coordinates):
+        bucket.sort(key=lambda e: e["relpath"])
+    return {"files": files, "topologies": topologies, "coordinates": coordinates}
+
+
+def list_structures(settings: Settings) -> list[dict]:
+    """Natively loadable structures only (convenience wrapper around :func:`scan`)."""
+    return scan(settings)["files"]
 
 
 def resolve_within_root(root: Path, relpath: str) -> Path | None:
