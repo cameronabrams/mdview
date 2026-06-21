@@ -26,6 +26,19 @@ def create_app(settings: Settings) -> FastAPI:
     app = FastAPI(title="mdview", version=__version__)
     app.state.settings = settings
 
+    @app.middleware("http")
+    async def revalidate_static(request, call_next):
+        """Force browsers to revalidate the SPA/vendor assets.
+
+        StaticFiles sends ETag/Last-Modified but no Cache-Control, so browsers
+        heuristically cache and can show a stale page after edits. "no-cache"
+        means *revalidate every time*; unchanged files still return a cheap 304.
+        """
+        response = await call_next(request)
+        if not request.url.path.startswith("/api"):
+            response.headers.setdefault("Cache-Control", "no-cache")
+        return response
+
     @app.get("/api/files")
     def api_files() -> dict:
         """List structures, topologies, and coordinate files under the data root."""

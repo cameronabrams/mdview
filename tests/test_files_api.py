@@ -32,6 +32,15 @@ def test_index_is_served(client):
     assert "mdview" in resp.text
 
 
+def test_static_assets_are_revalidated(client):
+    # SPA/vendor assets must not be heuristically cached (no-cache => revalidate).
+    for path in ("/", "/app.js"):
+        resp = client.get(path)
+        assert resp.headers.get("cache-control") == "no-cache"
+    # API responses are not tagged no-cache by the middleware.
+    assert client.get("/api/files").headers.get("cache-control") != "no-cache"
+
+
 def test_lists_topologies_and_coordinates(client):
     body = client.get("/api/files").json()
     # PSF fixture is a topology; PDB fixtures are coordinate sources.
