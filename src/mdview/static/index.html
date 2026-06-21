@@ -39,6 +39,15 @@
       padding: 3px 9px; cursor: pointer; font-size: 12px; }
     .topo button:hover { background: #474d5e; }
     .topo button:disabled { opacity: 0.5; cursor: not-allowed; }
+    .traj { padding: 7px 14px; }
+    .traj .row { display: flex; align-items: center; gap: 6px; margin-bottom: 5px; }
+    .traj label { color: #8b909a; font-size: 11px; flex: 0 0 42px; }
+    .traj select { flex: 1; min-width: 0; background: #14161b; color: #d7dae0;
+      border: 1px solid #2c2f38; border-radius: 3px; padding: 3px; font-size: 12px; }
+    .traj button { width: 100%; background: #3a4d3f; color: #fff; border: none;
+      border-radius: 3px; padding: 5px 9px; cursor: pointer; font-size: 12px; }
+    .traj button:hover { background: #47604e; }
+    .traj button:disabled { opacity: 0.5; cursor: not-allowed; }
     #status { padding: 8px 14px; color: #8b909a; font-size: 12px; border-top: 1px solid #2c2f38; }
     #viewer { position: relative; flex: 1; min-width: 0; }
   </style>
@@ -56,6 +65,16 @@
         <div id="topo-section" hidden>
           <div class="section-head">Topologies (pair with coordinates)</div>
           <div id="topo-list"></div>
+        </div>
+        <div id="traj-section" hidden>
+          <div class="section-head">Trajectories (model + coordinates)</div>
+          <div class="traj">
+            <div class="row"><label for="traj-model">model</label>
+              <select id="traj-model"></select></div>
+            <div class="row"><label for="traj-coords">traj</label>
+              <select id="traj-coords"></select></div>
+            <button id="traj-load">▶ Load &amp; play</button>
+          </div>
         </div>
       </div>
       <div id="status">Select a structure to load.</div>

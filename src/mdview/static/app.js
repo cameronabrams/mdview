@@ -8,6 +8,10 @@ const fileListEl = document.getElementById("file-list");
 const filesSection = document.getElementById("files-section");
 const topoListEl = document.getElementById("topo-list");
 const topoSection = document.getElementById("topo-section");
+const trajSection = document.getElementById("traj-section");
+const trajModelSel = document.getElementById("traj-model");
+const trajCoordsSel = document.getElementById("traj-coords");
+const trajLoadBtn = document.getElementById("traj-load");
 const statusEl = document.getElementById("status");
 const rootLabel = document.getElementById("root-label");
 
@@ -123,6 +127,68 @@ async function main() {
     }
   }
 
+  // --- trajectories (model/topology + coordinates -> Mol* playback) --------
+  function renderTrajectories(files, topologies, trajectories) {
+    if (!trajectories.length) return;
+    trajSection.hidden = false;
+
+    // Models can be a native structure (model-url) or a topology (topology-url).
+    const models = [
+      ...files.map((f) => ({ ...f, kind: "model-url" })),
+      ...topologies.map((t) => ({ ...t, kind: "topology-url" })),
+    ];
+    for (const m of models) {
+      const opt = document.createElement("option");
+      opt.value = m.relpath;
+      opt.textContent = `${m.relpath} (${m.format})`;
+      trajModelSel.appendChild(opt);
+    }
+    for (const t of trajectories) {
+      const opt = document.createElement("option");
+      opt.value = t.relpath;
+      opt.textContent = `${t.relpath} (${t.format})`;
+      trajCoordsSel.appendChild(opt);
+    }
+
+    const noModel = models.length === 0;
+    trajLoadBtn.disabled = noModel;
+    if (noModel) {
+      const opt = document.createElement("option");
+      opt.textContent = "no model/topology found";
+      trajModelSel.appendChild(opt);
+    }
+
+    trajLoadBtn.addEventListener("click", async () => {
+      const model = models[trajModelSel.selectedIndex];
+      const traj = trajectories[trajCoordsSel.selectedIndex];
+      if (!model || !traj) return;
+      markActive(null);
+      setStatus(`Loading ${traj.relpath} on ${model.relpath}…`);
+      try {
+        await viewer.plugin.clear();
+        await viewer.loadTrajectory({
+          // model/topology files (psf/pdb/gro) are text; trajectories are binary
+          model: {
+            kind: model.kind,
+            url: `/api/file/${encodeURI(model.relpath)}`,
+            format: model.format,
+            isBinary: false,
+          },
+          coordinates: {
+            kind: "coordinates-url",
+            url: `/api/file/${encodeURI(traj.relpath)}`,
+            format: traj.format,
+            isBinary: true,
+          },
+        });
+        setStatus(`Loaded ${traj.relpath} (use the playback bar to animate)`);
+      } catch (err) {
+        console.error(err);
+        setStatus(`Failed to load trajectory: ${err}`);
+      }
+    });
+  }
+
   // --- fetch + render ------------------------------------------------------
   try {
     const resp = await fetch("/api/files");
@@ -132,6 +198,7 @@ async function main() {
 
     renderFiles(data.files);
     renderTopologies(data.topologies, data.coordinates, data.convert_available);
+    renderTrajectories(data.files, data.topologies, data.trajectories);
 
     const total = data.files.length + data.topologies.length;
     if (!total) {

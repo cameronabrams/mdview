@@ -22,7 +22,17 @@ misfires on distorted MD coordinates). In the UI these appear under
 **Topologies**, with a coordinate-file picker. Enable with
 `uv sync --extra convert`.
 
-Trajectory playback (PSF+DCD / XTC) is planned — see *Roadmap*.
+**Phase 3: trajectory playback.** A model or topology (`.pdb`/`.gro`/`.psf`/
+`.prmtop`) is paired with a binary trajectory (`.dcd`/`.xtc`/`.trr`/`.nc`) and
+loaded through Mol\*'s native topology+coordinates path, giving a frame
+play/scrub bar. The server just streams the raw files — Mol\* decodes and
+animates the frames in the browser. In the UI this is the **Trajectories**
+section (model picker + trajectory picker + play). No `convert` extra needed.
+
+> **Note — large trajectories.** Mol\* downloads the whole trajectory before
+> playback, so a multi-GB `.dcd` over a thin SSH tunnel will be slow. Server-side
+> frame **decimation/striding** (send every Nth frame) is the next planned step;
+> see *Roadmap*.
 
 ## Install
 
@@ -62,8 +72,9 @@ then open <http://localhost:8000> in your browser.
 - `GET /api/files` — lists `files` (natively loadable), `topologies` (need
   coordinates), and `coordinates` (usable as a coordinate source) under the data
   root, plus `convert_available`. Recursive, extension-allowlisted.
-- `GET /api/file/{relpath}` — serves one structure's bytes (path-traversal
-  guarded; restricted to the data root).
+- `GET /api/file/{relpath}` — serves one file's raw bytes — structures,
+  topologies (`.psf`/`.prmtop`), and binary trajectories (`.dcd`/`.xtc`/…)
+  (path-traversal guarded; restricted to the data root and known extensions).
 - `GET /api/convert/{relpath}?coords={relpath}&format=mol2|cif|pdb` — merges a
   topology with a coordinate file via ParmEd and returns MOL2 (default; preserves
   bonds), or mmCIF/PDB (which drop connectivity). Both paths guarded to the data
@@ -73,9 +84,11 @@ then open <http://localhost:8000> in your browser.
 
 ## Roadmap
 
-- **Phase 3** — trajectory playback: load PSF+DCD / XTC / TRR via Mol\*'s
-  topology+coordinates path, with server-side frame decimation for large DCDs.
-- **Phase 4** — optional Docker packaging.
+- **Trajectory decimation** — a server-side stride endpoint (send every Nth
+  frame) so multi-GB trajectories are usable over a thin tunnel. Needs a
+  trajectory reader/writer with solid DCD support (e.g. MDAnalysis); ParmEd in
+  this stack reads/writes only structure formats, not DCD.
+- **Docker packaging** — optional, for running detached.
 
 ## License
 

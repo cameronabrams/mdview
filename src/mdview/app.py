@@ -9,7 +9,7 @@ from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from . import __version__
-from .config import CONTENT_TYPES, Settings
+from .config import CONTENT_TYPES, SERVEABLE_EXTENSIONS, Settings
 from .convert import (
     ConvertError,
     ConvertUnavailable,
@@ -41,7 +41,7 @@ def create_app(settings: Settings) -> FastAPI:
 
     @app.get("/api/files")
     def api_files() -> dict:
-        """List structures, topologies, and coordinate files under the data root."""
+        """List structures, topologies, coordinates, and trajectories in the root."""
         return {
             "root": str(settings.root),
             "convert_available": parmed_available(),
@@ -50,11 +50,15 @@ def create_app(settings: Settings) -> FastAPI:
 
     @app.get("/api/file/{relpath:path}")
     def api_file(relpath: str) -> FileResponse:
-        """Serve the raw bytes of one structure file (path-traversal guarded)."""
+        """Serve the raw bytes of one structure/topology/trajectory file.
+
+        Path-traversal guarded and restricted to known, serveable extensions so
+        Mol* can fetch PSF topologies and DCD/XTC trajectories directly.
+        """
         resolved = resolve_within_root(settings.root, relpath)
         if resolved is None:
             raise HTTPException(status_code=404, detail="file not found")
-        if settings.format_for(resolved.suffix) is None:
+        if resolved.suffix.lower() not in SERVEABLE_EXTENSIONS:
             raise HTTPException(status_code=415, detail="unsupported file type")
         media_type = CONTENT_TYPES.get(resolved.suffix.lower(), "text/plain")
         return FileResponse(resolved, media_type=media_type, filename=resolved.name)
