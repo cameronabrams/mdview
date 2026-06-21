@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>mdview</title>
+  <link rel="stylesheet" href="/vendor/molstar/molstar.css" />
+  <style>
+    :root { color-scheme: dark; }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; font: 14px system-ui, sans-serif; }
+    #layout { display: flex; height: 100vh; }
+    #sidebar {
+      width: 280px; flex: 0 0 280px; background: #1b1d23; color: #d7dae0;
+      border-right: 1px solid #2c2f38; display: flex; flex-direction: column;
+    }
+    #sidebar h1 { font-size: 15px; margin: 0; padding: 12px 14px; border-bottom: 1px solid #2c2f38; }
+    #sidebar h1 small { color: #8b909a; font-weight: normal; }
+    #root-label { padding: 8px 14px; color: #8b909a; font-size: 12px; word-break: break-all; }
+    #file-list { list-style: none; margin: 0; padding: 0; overflow-y: auto; flex: 1; }
+    #file-list li {
+      padding: 7px 14px; cursor: pointer; border-bottom: 1px solid #23262e;
+      display: flex; justify-content: space-between; gap: 8px;
+    }
+    #file-list li:hover { background: #262932; }
+    #file-list li.active { background: #2f3340; color: #fff; }
+    #file-list .fmt { color: #8b909a; font-size: 11px; text-transform: uppercase; flex: 0 0 auto; }
+    #file-list .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    #status { padding: 8px 14px; color: #8b909a; font-size: 12px; border-top: 1px solid #2c2f38; }
+    #viewer { position: relative; flex: 1; min-width: 0; }
+  </style>
+</head>
+<body>
+  <div id="layout">
+    <aside id="sidebar">
+      <h1>mdview <small>MD viewer</small></h1>
+      <div id="root-label">loading…</div>
+      <ul id="file-list"></ul>
+      <div id="status">Select a structure to load.</div>
+    </aside>
+    <main id="viewer"></main>
+  </div>
+  <script src="/vendor/molstar/molstar.js"></script>
+  <script src="/app.js"></script>
+</body>
+</html>

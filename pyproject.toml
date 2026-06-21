@@ -1,0 +1,32 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "mdview"
+version = "0.1.0"
+description = "Browser-served interactive visualization of molecular dynamics systems, designed for access over an SSH tunnel."
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [{ name = "Cameron F. Abrams", email = "cfa22@drexel.edu" }]
+license = { text = "MIT" }
+keywords = ["molecular-dynamics", "visualization", "molstar", "fastapi", "namd", "gromacs"]
+dependencies = [
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.29",
+]
+
+[project.optional-dependencies]
+# Server-side format conversion / topology+coords merging (phase 2). Optional:
+# Mol* reads PDB/mmCIF/GRO/PSF+DCD/XTC natively in the browser without this.
+convert = ["parmed>=4"]
+dev = ["pytest>=8", "httpx>=0.27"]
+
+[project.scripts]
+mdview = "mdview.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/mdview"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

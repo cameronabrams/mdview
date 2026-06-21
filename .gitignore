@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+build/
+dist/
+
+# uv
+# (uv.lock IS tracked — it pins reproducible deps)
+
+# Test / tooling
+.pytest_cache/
+.ruff_cache/
+
+# Editor / OS
+*.swp
+.DS_Store
+
+# Vendored frontend tarball scratch (the extracted assets ARE tracked)
+/static-tmp/
+*.tgz

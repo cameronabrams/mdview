@@ -1,0 +1,5 @@
+Mol* viewer build vendored from the npm "molstar" package.
+Version: 5.10.1
+Files: molstar.js, molstar.css (from build/viewer/)
+Source maps (*.map) intentionally omitted to keep the repo lean.
+Re-vendor: npm pack molstar && tar xzf molstar-*.tgz && cp package/build/viewer/molstar.{js,css} here
