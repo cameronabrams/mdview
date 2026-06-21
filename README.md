@@ -29,6 +29,12 @@ play/scrub bar. The server just streams the raw files — Mol\* decodes and
 animates the frames in the browser. In the UI this is the **Trajectories**
 section (model picker + trajectory picker + play). No `convert` extra needed.
 
+Some NAMD/CHARMM DCDs store a frame count (`NSET`) of 0 in their header even
+though they contain frames; Mol\* trusts `NSET` and would read zero frames. The
+server detects this from the file geometry and patches `NSET` on the fly while
+streaming (the rest of the file is byte-for-byte unchanged), so these
+trajectories play correctly.
+
 > **Note — large trajectories.** Mol\* downloads the whole trajectory before
 > playback, so a multi-GB `.dcd` over a thin SSH tunnel will be slow. Server-side
 > frame **decimation/striding** (send every Nth frame) is the next planned step;

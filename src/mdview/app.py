@@ -5,11 +5,12 @@ from __future__ import annotations
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse, Response
+from fastapi.responses import FileResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import __version__
 from .config import CONTENT_TYPES, SERVEABLE_EXTENSIONS, Settings
+from .dcd import patched_stream, repair_plan
 from .convert import (
     ConvertError,
     ConvertUnavailable,
@@ -58,9 +59,20 @@ def create_app(settings: Settings) -> FastAPI:
         resolved = resolve_within_root(settings.root, relpath)
         if resolved is None:
             raise HTTPException(status_code=404, detail="file not found")
-        if resolved.suffix.lower() not in SERVEABLE_EXTENSIONS:
+        suffix = resolved.suffix.lower()
+        if suffix not in SERVEABLE_EXTENSIONS:
             raise HTTPException(status_code=415, detail="unsupported file type")
-        media_type = CONTENT_TYPES.get(resolved.suffix.lower(), "text/plain")
+        media_type = CONTENT_TYPES.get(suffix, "text/plain")
+
+        # DCDs with a wrong NSET (frame count) header break Mol*'s reader, which
+        # trusts NSET. Patch it on the fly so such trajectories play.
+        if suffix == ".dcd":
+            plan = repair_plan(resolved)
+            if plan is not None:
+                nset, endian = plan
+                return StreamingResponse(
+                    patched_stream(resolved, nset, endian), media_type=media_type
+                )
         return FileResponse(resolved, media_type=media_type, filename=resolved.name)
 
     @app.get("/api/convert/{relpath:path}")

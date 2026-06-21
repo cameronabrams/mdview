@@ -6,10 +6,14 @@ and animates frames); here we test the server contract that makes it possible.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from fastapi.testclient import TestClient
 
 from mdview.app import create_app
 from mdview.config import Settings
+
+DATA_DIR = Path(__file__).parent / "data"
 
 
 def test_lists_trajectories(client):
@@ -32,6 +36,31 @@ def test_serves_trajectory_bytes_as_binary(client):
     assert resp.status_code == 200
     assert resp.headers["content-type"] == "application/octet-stream"
     assert resp.content[4:8] == b"CORD"  # DCD magic, after the 4-byte block length
+
+
+def test_dcd_nset_header_is_repaired_when_served(client):
+    import struct
+
+    # The fixture's header NSET is 0; the file actually holds 10 frames. Mol*
+    # trusts NSET, so the served bytes must carry the corrected count.
+    raw = (DATA_DIR / "alad_v.dcd").read_bytes()
+    assert struct.unpack("<i", raw[8:12])[0] == 0  # on-disk header is wrong
+
+    served = client.get("/api/file/alad_v.dcd").content
+    assert struct.unpack("<i", served[8:12])[0] == 10  # patched
+    # everything else is identical, and the file is otherwise untouched
+    assert served[:8] == raw[:8]
+    assert served[12:] == raw[12:]
+    assert len(served) == len(raw)
+
+
+def test_dcd_repair_plan_detects_wrong_nset():
+    from mdview.dcd import repair_plan
+
+    plan = repair_plan(DATA_DIR / "alad_v.dcd")
+    assert plan is not None
+    nset, endian = plan
+    assert nset == 10 and endian == "<"
 
 
 def test_unsupported_extension_is_415(tmp_path):
