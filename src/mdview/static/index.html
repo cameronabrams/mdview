@@ -64,6 +64,22 @@
     .traj label.chk input { flex: 0 0 auto; }
     #proc-note { color: #d98b8b; font-size: 11px; padding: 2px 0; min-height: 0; }
     #proc-note.ok { color: #8b909a; }
+    #render-panel { border-top: 1px solid #2c2f38; padding: 8px 14px; }
+    #render-panel .section-head { padding: 0 0 6px; border-top: none; }
+    #render-controls { display: flex; gap: 6px; align-items: center; margin-bottom: 6px; }
+    #render-res, #render-name { background: #14161b; color: #d7dae0;
+      border: 1px solid #2c2f38; border-radius: 3px; padding: 3px; font-size: 12px; }
+    #render-name { flex: 1; min-width: 0; }
+    #render-btn { width: 100%; background: #3a3f4d; color: #fff; border: none;
+      border-radius: 3px; padding: 5px 9px; cursor: pointer; font-size: 12px; }
+    #render-btn:hover { background: #474d5e; }
+    #render-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    #render-note { color: #8b909a; font-size: 11px; padding: 3px 0 0; }
+    #render-gallery { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 6px;
+      max-height: 124px; overflow-y: auto; }
+    #render-gallery a img { width: 54px; height: 54px; object-fit: cover; display: block;
+      border: 1px solid #2c2f38; border-radius: 3px; }
+    #render-gallery a:hover img { border-color: #89b4fa; }
     #status { padding: 8px 14px; color: #8b909a; font-size: 12px; border-top: 1px solid #2c2f38; }
     #viewer { position: relative; flex: 1; min-width: 0; }
   </style>
@@ -108,6 +124,20 @@
           </div>
         </div>
         <div id="empty-note" hidden>No loadable files in this folder.</div>
+      </div>
+      <div id="render-panel">
+        <div class="section-head">Render</div>
+        <div id="render-controls">
+          <select id="render-res" title="supersampling">
+            <option value="1">1×</option>
+            <option value="2" selected>2×</option>
+            <option value="4">4×</option>
+          </select>
+          <input id="render-name" type="text" placeholder="filename (auto)">
+        </div>
+        <button id="render-btn">📷 Render to server</button>
+        <div id="render-note"></div>
+        <div id="render-gallery"></div>
       </div>
       <div id="status">Browsing…</div>
     </aside>

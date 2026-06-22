@@ -86,12 +86,15 @@ class Settings:
     root: Path
     host: str = "127.0.0.1"
     port: int = 8000
+    render_dir: Path = field(default_factory=lambda: Path.home() / "mdview-renders")
     extensions: dict[str, str] = field(default_factory=lambda: dict(STATIC_EXTENSIONS))
 
     def __post_init__(self) -> None:
         self.root = Path(self.root).expanduser().resolve()
         if not self.root.is_dir():
             raise NotADirectoryError(f"data root is not a directory: {self.root}")
+        # Renders land here; created lazily on first write (need not exist yet).
+        self.render_dir = Path(self.render_dir).expanduser().resolve()
 
     def format_for(self, suffix: str) -> str | None:
         """Mol* format name for a file suffix, or None if unsupported."""

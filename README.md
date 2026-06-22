@@ -55,6 +55,13 @@ topology in a parent dir and trajectories in an `output/` subdir, the trajectory
 **model** picker also offers model-eligible files from ancestor folders (shown
 with a `↑` prefix), so you can pair a `.dcd` with a `.psf` one level up.
 
+**Phase 6: render to the server.** The sidebar **Render** panel captures the
+current Mol\* view (1×/2×/4× supersampling) and writes the PNG to a directory on
+the **workstation** (`--render-dir`, default `~/mdview-renders`) — so figures stay
+where your data and notes live instead of only downloading to the laptop. Saved
+renders appear as a thumbnail gallery in the sidebar; click one to open the full
+image.
+
 ## Install
 
 Requires Python ≥ 3.10 and [uv](https://docs.astral.sh/uv/).
@@ -71,7 +78,8 @@ uv run mdview serve --root /path/to/your/structures --port 8000
 ```
 
 Point `--root` at a broad directory (e.g. `~/` or a simulations tree) and browse
-its subfolders in the sidebar to find a system. Binds `127.0.0.1` by default
+its subfolders in the sidebar to find a system. Rendered images are written to
+`--render-dir` (default `~/mdview-renders`). Binds `127.0.0.1` by default
 (tunnel-only; no authentication).
 
 ### Access over an SSH tunnel
@@ -109,6 +117,9 @@ then open <http://localhost:8000> in your browser.
   align, align_select}` request; returns cached `model_url` + `trajectory_url`
   plus atom/frame counts. Requires the `process` extra.
 - `GET /api/prepared/{id}/{model|trajectory}` — serve a cached processed result.
+- `POST /api/render` — save a captured PNG (data URI) into `--render-dir`;
+  `GET /api/renders` lists them, `GET /api/renders/{name}` serves one. Filenames
+  are basename-sanitized to the render directory.
 - `/` — the single-page Mol\* viewer; the vendored Mol\* build lives under
   `src/mdview/static/vendor/molstar/` (no frontend build step required).
 

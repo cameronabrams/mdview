@@ -29,9 +29,15 @@ from .process import (
     process_available,
 )
 from .process import _paths as _prepared_paths
+from .render import RenderError, list_renders, safe_render_path, save_png
 
 STATIC_DIR = Path(__file__).parent / "static"
 _HEX64 = re.compile(r"^[0-9a-f]{64}$")
+
+
+class RenderRequest(BaseModel):
+    image: str
+    name: str | None = None
 
 
 class PrepareRequest(BaseModel):
@@ -194,6 +200,31 @@ def create_app(settings: Settings) -> FastAPI:
         media_type = "chemical/x-mol2" if which == "model" else "application/octet-stream"
         return FileResponse(path, media_type=media_type)
 
+    @app.post("/api/render")
+    def api_render(req: RenderRequest) -> dict:
+        """Save a captured PNG (data URI) into the server's render directory."""
+        try:
+            filename = save_png(settings.render_dir, req.image, req.name)
+        except RenderError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        return {"filename": filename, "url": f"/api/renders/{filename}"}
+
+    @app.get("/api/renders")
+    def api_renders() -> dict:
+        """List previously saved renders, newest first."""
+        return {
+            "render_dir": str(settings.render_dir),
+            "renders": list_renders(settings.render_dir),
+        }
+
+    @app.get("/api/renders/{name}")
+    def api_render_file(name: str) -> FileResponse:
+        """Serve one saved render PNG (basename-guarded to the render directory)."""
+        path = safe_render_path(settings.render_dir, name)
+        if path is None:
+            raise HTTPException(status_code=404, detail="render not found")
+        return FileResponse(path, media_type="image/png")
+
     # The SPA and vendored Mol* assets. html=True serves index.html at "/".
     app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="static")
 
@@ -208,4 +239,6 @@ def _app_from_env() -> FastAPI:
     import os
 
     root = os.environ.get("MDVIEW_ROOT", ".")
-    return create_app(Settings(root=root))
+    render_dir = os.environ.get("MDVIEW_RENDER_DIR")
+    kwargs = {"render_dir": render_dir} if render_dir else {}
+    return create_app(Settings(root=root, **kwargs))

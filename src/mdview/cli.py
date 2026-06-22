@@ -32,6 +32,12 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     serve.add_argument("--port", type=int, default=8000, help="bind port (default: 8000)")
     serve.add_argument(
+        "--render-dir",
+        type=Path,
+        default=Path.home() / "mdview-renders",
+        help="where rendered images are saved (default: ~/mdview-renders)",
+    )
+    serve.add_argument(
         "--reload", action="store_true", help="auto-reload on code changes (dev)"
     )
     return parser
@@ -44,13 +50,17 @@ def main(argv: list[str] | None = None) -> int:
         import uvicorn
 
         try:
-            settings = Settings(root=args.root, host=args.host, port=args.port)
+            settings = Settings(
+                root=args.root, host=args.host, port=args.port,
+                render_dir=args.render_dir,
+            )
         except (NotADirectoryError, FileNotFoundError) as exc:
             print(f"mdview: {exc}", file=sys.stderr)
             return 2
 
         print(f"mdview {__version__}: serving {settings.root}")
         print(f"  -> http://{settings.host}:{settings.port}")
+        print(f"  renders -> {settings.render_dir}")
         if settings.host == "127.0.0.1":
             print(f"  tunnel from your laptop: ssh -L {settings.port}:localhost:"
                   f"{settings.port} <this-host>")
@@ -60,6 +70,7 @@ def main(argv: list[str] | None = None) -> int:
             import os
 
             os.environ["MDVIEW_ROOT"] = str(settings.root)
+            os.environ["MDVIEW_RENDER_DIR"] = str(settings.render_dir)
             uvicorn.run(
                 "mdview.app:_app_from_env",
                 factory=True,

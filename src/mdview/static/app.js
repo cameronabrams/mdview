@@ -22,6 +22,11 @@ const procAlign = el("proc-align");
 const procAlignSel = el("proc-align-sel");
 const procNote = el("proc-note");
 const emptyNote = el("empty-note");
+const renderRes = el("render-res");
+const renderName = el("render-name");
+const renderBtn = el("render-btn");
+const renderNote = el("render-note");
+const renderGallery = el("render-gallery");
 const statusEl = el("status");
 const rootLabel = el("root-label");
 
@@ -305,6 +310,74 @@ async function loadDir(dir) {
   }
 }
 
+// --- render the current view to a PNG saved on the server -----------------
+const nextFrame = () =>
+  new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+
+async function captureDataUri(scale) {
+  const helper = viewer.plugin.helpers.viewportScreenshot;
+  if (!helper) throw new Error("screenshot helper unavailable");
+  const c3d = viewer.plugin.canvas3d;
+  // Supersample by temporarily raising the canvas pixelScale (Mol*'s hi-res
+  // lever), then restore. Falls back to viewport size if anything goes wrong.
+  if (scale > 1 && c3d) {
+    const prev = (c3d.props && c3d.props.pixelScale) || 1;
+    try {
+      c3d.setProps({ pixelScale: prev * scale });
+      await nextFrame();
+      return await helper.getImageDataUri();
+    } finally {
+      c3d.setProps({ pixelScale: prev });
+      await nextFrame();
+    }
+  }
+  return await helper.getImageDataUri();
+}
+
+async function loadRenders() {
+  try {
+    const resp = await fetch("/api/renders");
+    const data = await resp.json();
+    renderGallery.replaceChildren();
+    for (const r of data.renders) {
+      const a = document.createElement("a");
+      a.href = r.url;
+      a.target = "_blank";
+      a.title = r.name;
+      const img = document.createElement("img");
+      img.src = r.url;
+      img.alt = r.name;
+      a.appendChild(img);
+      renderGallery.appendChild(a);
+    }
+  } catch (err) {
+    console.error(err);
+  }
+}
+
+async function renderToServer() {
+  renderBtn.disabled = true;
+  renderNote.textContent = "Rendering…";
+  try {
+    const dataUri = await captureDataUri(Number(renderRes.value) || 1);
+    const resp = await fetch("/api/render", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ image: dataUri, name: renderName.value.trim() || null }),
+    });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.detail || `HTTP ${resp.status}`);
+    renderNote.textContent = `Saved ${data.filename}`;
+    renderName.value = "";
+    await loadRenders();
+  } catch (err) {
+    console.error(err);
+    renderNote.textContent = `Render failed: ${err.message || err}`;
+  } finally {
+    renderBtn.disabled = false;
+  }
+}
+
 async function main() {
   viewer = await molstar.Viewer.create("viewer", {
     layoutIsExpanded: false,
@@ -313,6 +386,8 @@ async function main() {
     viewportShowExpand: true,
   });
   trajLoadBtn.addEventListener("click", onTrajLoad);
+  renderBtn.addEventListener("click", renderToServer);
+  await loadRenders();
   await loadDir("");
 }
 
