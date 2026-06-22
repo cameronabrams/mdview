@@ -37,7 +37,11 @@ LIPID_COLOR_NAMES = [
     "SOPC", "SOPE", "SOPS", "SOPA",
     "CHL1", "CHOL", "ERG", "PSM", "SSM", "OSM", "BSM", "NSM",
 ]
-COLOR_ANCHOR = "{ARG:255,ASP:16711680,"  # unique; front of the color map literal
+# Front of the residue-name theme's color map (`aR = {ALA:..., ARG:..., ...}`,
+# referenced as `ResidueName:aR` / `colors.name==="default" ? aR : ...`). Unique.
+# (Note: there's a *different* amino-acid map `{ARG:255,...}` used elsewhere — not
+# this one.)
+COLOR_ANCHOR = "{ALA:9240460,ARG:124,"
 
 BUNDLE = (
     Path(__file__).resolve().parent.parent

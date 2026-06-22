@@ -52,10 +52,10 @@ def test_patcher_is_idempotent_on_the_bundle():
 def test_patch_inserts_once_without_artifacts(tmp_path):
     patcher = _load_patcher()
     fake = tmp_path / "fake.js"
-    # both anchors: the recognition Set and the residue-name color map
+    # both anchors: the recognition Set and the residue-name color map (aR)
     fake.write_text(
         'var cK=new Set(["DPPC","POPC","PRPC"]);'
-        'var t={ARG:255,ASP:16711680,GLU:16711680,HIS:3392505};'
+        'var aR={ALA:9240460,ARG:124,ASN:16743536,ASP:10485826};'
     )
 
     added = patcher.patch(fake)
@@ -63,7 +63,7 @@ def test_patch_inserts_once_without_artifacts(tmp_path):
     assert "POPC" in added  # a color-map key
     out = fake.read_text()
     assert '"POPC","CHL1"' in out  # name set extended in place
-    assert "ASP:16711680,BSM:" in out  # colors injected (sorted) right after anchor
+    assert "ARG:124,BSM:" in out  # colors injected (sorted) right after the anchor
     assert "POPC:" in out  # the user's species got a color key
     assert ",," not in out and '""' not in out  # no comma/quote artifacts
 
