@@ -1,0 +1,39 @@
+# mdview over docker-compose. Single service (no DB).
+#
+#   MDVIEW_UID=$(id -u) MDVIEW_GID=$(id -g) docker compose up --build
+#
+# Edit the two bind mounts below to point at the host data you want to browse and
+# where renders should land. Data is mounted read-only on purpose.
+
+services:
+  mdview:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    # Published to 127.0.0.1 only — reach it over an SSH tunnel, like the bare
+    # run. The container itself listens on 0.0.0.0 (see the Dockerfile CMD).
+    ports:
+      - "127.0.0.1:8000:8000"
+    # Render/cache files are written as this uid:gid so they're yours, not root.
+    user: "${MDVIEW_UID:-1000}:${MDVIEW_GID:-1000}"
+    # On SELinux-enforcing hosts (e.g. openSUSE), let the container read the bind
+    # mounts without relabeling the (possibly broad) host data dir.
+    security_opt:
+      - label=disable
+    volumes:
+      # host data to browse (read-only) -> /data   (change the host path)
+      - "${MDVIEW_DATA:-${HOME}}:/data:ro"
+      # where rendered PNGs are saved (writable) -> /renders
+      - "${MDVIEW_RENDERS:-./mdview-renders}:/renders"
+      # processing cache survives restarts
+      - "mdview-cache:/tmp/mdview-cache"
+    healthcheck:
+      # Python-based (no curl in the image) — exits 0 only on HTTP 200.
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/api/renders').getcode()==200 else 1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  mdview-cache:

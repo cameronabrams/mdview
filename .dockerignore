@@ -1,0 +1,15 @@
+# Keep the build context small — only pyproject/uv.lock/README/src are needed.
+.venv/
+.git/
+.gitignore
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+tests/
+docker/
+docker-compose.yml
+*.tgz
+mdview-renders/
+*.md
+!README.md

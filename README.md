@@ -98,6 +98,30 @@ ssh -L 8000:localhost:8000 panacea
 
 then open <http://localhost:8000> in your browser.
 
+## Docker
+
+A full image (includes the `convert` + `process` extras) via docker-compose:
+
+```bash
+MDVIEW_DATA=~/ MDVIEW_RENDERS=~/mdview-renders \
+MDVIEW_UID=$(id -u) MDVIEW_GID=$(id -g) \
+docker compose up --build
+```
+
+- `MDVIEW_DATA` is bind-mounted **read-only** at `/data` (the browse root);
+  `MDVIEW_RENDERS` is mounted writable at `/renders`. Edit
+  [`docker-compose.yml`](docker-compose.yml) to taste.
+- The container listens on `0.0.0.0`, but the port is published to
+  **`127.0.0.1:8000`** only — reach it over the same SSH tunnel as above.
+- `MDVIEW_UID`/`MDVIEW_GID` make rendered/cached files on the host owned by you,
+  not root. The processing cache persists in a named volume across restarts.
+- On **SELinux-enforcing** hosts (e.g. openSUSE) the compose file sets
+  `security_opt: label=disable` so the container can read the bind mounts without
+  relabeling your (possibly broad) data directory.
+
+The image is ~1–1.5 GB (scipy/MDAnalysis). For browse/play only, drop the extras
+from `docker/Dockerfile` for a much smaller image.
+
 ## How it works
 
 - `GET /api/browse?dir={reldir}` — lists one directory (non-recursive): `dirs`
@@ -130,7 +154,6 @@ then open <http://localhost:8000> in your browser.
   repeats instant). A job/progress API would smooth this over.
 - **Cache eviction** — the content-addressed processing cache under the system
   temp dir has no size/age cap yet.
-- **Docker packaging** — optional, for running detached.
 
 ## License
 
