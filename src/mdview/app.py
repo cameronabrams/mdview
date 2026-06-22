@@ -19,7 +19,7 @@ from .convert import (
     convert,
     parmed_available,
 )
-from .files import resolve_within_root, scan
+from .files import browse, resolve_within_root, scan
 from .process import (
     DEFAULT_ALIGN_SELECTION,
     STRIP_SOLVENT_FILTER,
@@ -72,12 +72,25 @@ def create_app(settings: Settings) -> FastAPI:
 
     @app.get("/api/files")
     def api_files() -> dict:
-        """List structures, topologies, coordinates, and trajectories in the root."""
+        """List ALL loadable files under the root, recursively (legacy/whole-tree)."""
         return {
             "root": str(settings.root),
             "convert_available": parmed_available(),
             "process_available": process_available(),
             **scan(settings),
+        }
+
+    @app.get("/api/browse")
+    def api_browse(dir: str = "") -> dict:
+        """List one directory under the root (folders + this folder's loadable files)."""
+        result = browse(settings, dir)
+        if result is None:
+            raise HTTPException(status_code=404, detail="directory not found")
+        return {
+            "root": str(settings.root),
+            "convert_available": parmed_available(),
+            "process_available": process_available(),
+            **result,
         }
 
     @app.get("/api/file/{relpath:path}")

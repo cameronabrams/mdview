@@ -16,7 +16,14 @@
     }
     #sidebar h1 { font-size: 15px; margin: 0; padding: 12px 14px; border-bottom: 1px solid #2c2f38; }
     #sidebar h1 small { color: #8b909a; font-weight: normal; }
-    #root-label { padding: 8px 14px; color: #8b909a; font-size: 12px; word-break: break-all; }
+    #root-label { padding: 8px 14px 2px; color: #8b909a; font-size: 11px; word-break: break-all; }
+    #breadcrumb { padding: 2px 14px 8px; font-size: 12px; word-break: break-all;
+      border-bottom: 1px solid #2c2f38; }
+    #breadcrumb .crumb { color: #89b4fa; cursor: pointer; }
+    #breadcrumb .crumb:hover { text-decoration: underline; }
+    #breadcrumb .crumb-sep { color: #555b66; }
+    ul.file-list li.folder { color: #e6c07b; }
+    #empty-note { padding: 10px 14px; color: #8b909a; font-size: 12px; }
     #lists { overflow-y: auto; flex: 1; }
     .section-head { padding: 10px 14px 4px; color: #8b909a; font-size: 11px;
       text-transform: uppercase; letter-spacing: 0.04em; border-top: 1px solid #2c2f38; }
@@ -66,7 +73,9 @@
     <aside id="sidebar">
       <h1>mdview <small>MD viewer</small></h1>
       <div id="root-label">loading…</div>
+      <div id="breadcrumb"></div>
       <div id="lists">
+        <ul id="folder-list" class="file-list"></ul>
         <div id="files-section" hidden>
           <div class="section-head">Structures</div>
           <ul id="file-list" class="file-list"></ul>
@@ -98,8 +107,9 @@
             <button id="traj-load">▶ Load &amp; play</button>
           </div>
         </div>
+        <div id="empty-note" hidden>No loadable files in this folder.</div>
       </div>
-      <div id="status">Select a structure to load.</div>
+      <div id="status">Browsing…</div>
     </aside>
     <main id="viewer"></main>
   </div>

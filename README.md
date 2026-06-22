@@ -47,10 +47,13 @@ ParmEd as MOL2 so bonds survive. Results are cached on disk, content-addressed b
 section gains stride / strip-solvent / selection / align controls. Enable with
 `uv sync --extra process`.
 
-> **Note — large trajectories.** Mol\* downloads the whole trajectory before
-> playback, so a multi-GB `.dcd` over a thin SSH tunnel will be slow. Server-side
-> frame **decimation/striding** (send every Nth frame) is the next planned step;
-> see *Roadmap*.
+**Phase 5: directory browser.** Point `--root` at a broad directory and navigate
+its subfolders in the sidebar (breadcrumb + current folder), rather than reading a
+flat recursive dump. Only the folder you're in is shown; the path-traversal
+sandbox keeps everything confined to the root. Because MD layouts often keep the
+topology in a parent dir and trajectories in an `output/` subdir, the trajectory
+**model** picker also offers model-eligible files from ancestor folders (shown
+with a `↑` prefix), so you can pair a `.dcd` with a `.psf` one level up.
 
 ## Install
 
@@ -67,7 +70,9 @@ uv sync --extra dev     # + pytest/httpx for the test suite
 uv run mdview serve --root /path/to/your/structures --port 8000
 ```
 
-Binds `127.0.0.1` by default (tunnel-only; no authentication).
+Point `--root` at a broad directory (e.g. `~/` or a simulations tree) and browse
+its subfolders in the sidebar to find a system. Binds `127.0.0.1` by default
+(tunnel-only; no authentication).
 
 ### Access over an SSH tunnel
 
@@ -87,9 +92,12 @@ then open <http://localhost:8000> in your browser.
 
 ## How it works
 
-- `GET /api/files` — lists `files` (natively loadable), `topologies` (need
-  coordinates), and `coordinates` (usable as a coordinate source) under the data
-  root, plus `convert_available`. Recursive, extension-allowlisted.
+- `GET /api/browse?dir={reldir}` — lists one directory (non-recursive): `dirs`
+  (subfolders), `parent`, this folder's `files`/`topologies`/`coordinates`/
+  `trajectories`, `ancestor_models` (model files in parent folders), and the
+  `convert_available`/`process_available` flags. Sandbox-guarded to the root.
+- `GET /api/files` — the whole-tree recursive listing (legacy; the UI uses
+  `/api/browse`).
 - `GET /api/file/{relpath}` — serves one file's raw bytes — structures,
   topologies (`.psf`/`.prmtop`), and binary trajectories (`.dcd`/`.xtc`/…)
   (path-traversal guarded; restricted to the data root and known extensions).

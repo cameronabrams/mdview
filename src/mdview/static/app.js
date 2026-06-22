@@ -1,289 +1,319 @@
-// mdview frontend: list structures from the API and render the selected one
-// with the vendored Mol* viewer. Topology-only files (PSF/prmtop) are paired
-// with a coordinate file and converted server-side. No build step — `molstar`
-// is a global from vendor/molstar/molstar.js.
+// mdview frontend: a directory browser (breadcrumb + current folder) over the
+// /api/browse endpoint, rendering the selected structure/trajectory with the
+// vendored Mol* viewer. No build step — `molstar` is a global.
 "use strict";
 
-const fileListEl = document.getElementById("file-list");
-const filesSection = document.getElementById("files-section");
-const topoListEl = document.getElementById("topo-list");
-const topoSection = document.getElementById("topo-section");
-const trajSection = document.getElementById("traj-section");
-const trajModelSel = document.getElementById("traj-model");
-const trajCoordsSel = document.getElementById("traj-coords");
-const trajLoadBtn = document.getElementById("traj-load");
-const procOptions = document.getElementById("proc-options");
-const procStride = document.getElementById("proc-stride");
-const procStrip = document.getElementById("proc-strip");
-const procSelect = document.getElementById("proc-select");
-const procAlign = document.getElementById("proc-align");
-const procAlignSel = document.getElementById("proc-align-sel");
-const procNote = document.getElementById("proc-note");
-const statusEl = document.getElementById("status");
-const rootLabel = document.getElementById("root-label");
+const el = (id) => document.getElementById(id);
+const breadcrumbEl = el("breadcrumb");
+const folderListEl = el("folder-list");
+const fileListEl = el("file-list");
+const filesSection = el("files-section");
+const topoListEl = el("topo-list");
+const topoSection = el("topo-section");
+const trajSection = el("traj-section");
+const trajModelSel = el("traj-model");
+const trajCoordsSel = el("traj-coords");
+const trajLoadBtn = el("traj-load");
+const procOptions = el("proc-options");
+const procStride = el("proc-stride");
+const procStrip = el("proc-strip");
+const procSelect = el("proc-select");
+const procAlign = el("proc-align");
+const procAlignSel = el("proc-align-sel");
+const procNote = el("proc-note");
+const emptyNote = el("empty-note");
+const statusEl = el("status");
+const rootLabel = el("root-label");
 
 function setStatus(msg) {
   statusEl.textContent = msg;
 }
 
+let viewer;
+let activeRow = null;
+// Current-directory trajectory state, read by the once-attached load button.
+let curModels = [];
+let curTrajectories = [];
+let curProcessAvailable = false;
+let curDir = "";
+
+function markActive(node) {
+  if (activeRow) activeRow.classList.remove("active");
+  if (node) node.classList.add("active");
+  activeRow = node;
+}
+
+async function loadUrl(url, format, label, row) {
+  markActive(row || null);
+  setStatus(`Loading ${label}…`);
+  try {
+    await viewer.plugin.clear();
+    await viewer.loadStructureFromUrl(url, format, false);
+    setStatus(`Loaded ${label}`);
+  } catch (err) {
+    console.error(err);
+    setStatus(`Failed to load ${label}: ${err}`);
+  }
+}
+
+// --- breadcrumb + folder navigation ---------------------------------------
+function crumb(label, target) {
+  const span = document.createElement("span");
+  span.className = "crumb";
+  span.textContent = label;
+  span.addEventListener("click", () => loadDir(target));
+  return span;
+}
+
+function renderBreadcrumb(dir) {
+  breadcrumbEl.replaceChildren(crumb("root", ""));
+  if (!dir) return;
+  let acc = "";
+  for (const part of dir.split("/")) {
+    acc = acc ? `${acc}/${part}` : part;
+    const sep = document.createElement("span");
+    sep.className = "crumb-sep";
+    sep.textContent = " / ";
+    breadcrumbEl.append(sep, crumb(part, acc));
+  }
+}
+
+function renderFolders(parent, dirs) {
+  folderListEl.replaceChildren();
+  const addFolder = (label, target) => {
+    const li = document.createElement("li");
+    li.className = "folder";
+    li.textContent = `📁 ${label}`;
+    li.addEventListener("click", () => loadDir(target));
+    folderListEl.appendChild(li);
+  };
+  if (parent !== null) addFolder(".. (up)", parent);
+  for (const d of dirs) addFolder(`${d.name}/`, d.relpath);
+}
+
+// --- native structures ----------------------------------------------------
+function renderFiles(files) {
+  fileListEl.replaceChildren();
+  filesSection.hidden = !files.length;
+  for (const entry of files) {
+    const li = document.createElement("li");
+    const name = document.createElement("span");
+    name.className = "name";
+    name.textContent = entry.name;
+    name.title = entry.relpath;
+    const fmt = document.createElement("span");
+    fmt.className = "fmt";
+    fmt.textContent = entry.format;
+    li.append(name, fmt);
+    li.addEventListener("click", () =>
+      loadUrl(`/api/file/${encodeURI(entry.relpath)}`, entry.format, entry.name, li),
+    );
+    fileListEl.appendChild(li);
+  }
+}
+
+// --- topologies (need a coordinate file) ----------------------------------
+function renderTopologies(topologies, coordinates, convertAvailable) {
+  topoListEl.replaceChildren();
+  topoSection.hidden = !topologies.length;
+  for (const topo of topologies) {
+    const wrap = document.createElement("div");
+    wrap.className = "topo";
+
+    const name = document.createElement("div");
+    name.className = "name";
+    const n = document.createElement("span");
+    n.textContent = topo.name;
+    n.title = topo.relpath;
+    const fmt = document.createElement("span");
+    fmt.className = "fmt";
+    fmt.textContent = topo.format;
+    name.append(n, fmt);
+
+    const pair = document.createElement("div");
+    pair.className = "pair";
+    const select = document.createElement("select");
+    if (!convertAvailable) {
+      select.append(new Option("convert extra not installed"));
+      select.disabled = true;
+    } else if (!coordinates.length) {
+      select.append(new Option("no coordinate files here"));
+      select.disabled = true;
+    } else {
+      for (const c of coordinates) select.append(new Option(c.name, c.relpath));
+    }
+    const btn = document.createElement("button");
+    btn.textContent = "Load";
+    btn.disabled = select.disabled;
+    btn.addEventListener("click", () => {
+      const coords = select.value;
+      // mol2 carries the topology's explicit bonds (real connectivity, not a guess).
+      const url =
+        `/api/convert/${encodeURI(topo.relpath)}` +
+        `?coords=${encodeURIComponent(coords)}&format=mol2`;
+      loadUrl(url, "mol2", `${topo.name} + ${coords.split("/").pop()}`, wrap);
+    });
+    pair.append(select, btn);
+    wrap.append(name, pair);
+    topoListEl.appendChild(wrap);
+  }
+}
+
+// --- trajectories (model/topology + coordinates -> Mol* playback) ---------
+function renderTrajectories(files, topologies, trajectories, ancestorModels, processAvailable) {
+  trajSection.hidden = !trajectories.length;
+  curProcessAvailable = processAvailable;
+  procOptions.hidden = !processAvailable;
+  procNote.textContent = "";
+
+  // Models: a native structure (model-url) or topology (topology-url) in THIS
+  // folder, plus model-eligible files from ancestor folders (common MD layout:
+  // topology in a parent dir, trajectory in an output/ subdir).
+  curModels = [
+    ...files.map((f) => ({ ...f, kind: "model-url", label: f.name })),
+    ...topologies.map((t) => ({ ...t, kind: "topology-url", label: t.name })),
+    ...ancestorModels.map((m) => ({ ...m, label: `↑ ${m.relpath}` })),
+  ];
+  curTrajectories = trajectories;
+  if (!trajectories.length) return;
+
+  trajModelSel.replaceChildren();
+  for (const m of curModels) trajModelSel.append(new Option(`${m.label} (${m.format})`, m.relpath));
+  trajCoordsSel.replaceChildren();
+  for (const t of trajectories) trajCoordsSel.append(new Option(`${t.name} (${t.format})`, t.relpath));
+
+  const noModel = curModels.length === 0;
+  trajLoadBtn.disabled = noModel;
+  if (noModel) trajModelSel.append(new Option("no model/topology in this folder"));
+}
+
+function processingRequested() {
+  return (
+    curProcessAvailable &&
+    (Number(procStride.value) > 1 ||
+      procStrip.checked ||
+      procAlign.checked ||
+      procSelect.value.trim() !== "")
+  );
+}
+
+async function loadProcessed(model, traj) {
+  procNote.textContent = "Processing on the server…";
+  procNote.className = "ok";
+  const body = {
+    top: model.relpath,
+    traj: traj.relpath,
+    select: procSelect.value.trim() || "all",
+    strip: procStrip.checked,
+    stride: Math.max(1, Number(procStride.value) || 1),
+    align: procAlign.checked,
+    align_select: procAlignSel.value.trim() || "backbone",
+  };
+  const resp = await fetch("/api/prepare", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const data = await resp.json();
+  if (!resp.ok) throw new Error(data.detail || `HTTP ${resp.status}`);
+  procNote.textContent = `${data.n_atoms} atoms, ${data.n_frames} frames`;
+  await viewer.plugin.clear();
+  await viewer.loadTrajectory({
+    model: { kind: "model-url", url: data.model_url, format: data.model_format, isBinary: false },
+    coordinates: {
+      kind: "coordinates-url",
+      url: data.trajectory_url,
+      format: data.trajectory_format,
+      isBinary: true,
+    },
+  });
+}
+
+async function loadRaw(model, traj) {
+  await viewer.plugin.clear();
+  await viewer.loadTrajectory({
+    // model/topology files (psf/pdb/gro) are text; trajectories are binary
+    model: {
+      kind: model.kind,
+      url: `/api/file/${encodeURI(model.relpath)}`,
+      format: model.format,
+      isBinary: false,
+    },
+    coordinates: {
+      kind: "coordinates-url",
+      url: `/api/file/${encodeURI(traj.relpath)}`,
+      format: traj.format,
+      isBinary: true,
+    },
+  });
+}
+
+async function onTrajLoad() {
+  const model = curModels[trajModelSel.selectedIndex];
+  const traj = curTrajectories[trajCoordsSel.selectedIndex];
+  if (!model || !traj) return;
+  markActive(null);
+  procNote.textContent = "";
+  trajLoadBtn.disabled = true;
+  const processed = processingRequested();
+  setStatus(`${processed ? "Processing" : "Loading"} ${traj.name} on ${model.name}…`);
+  try {
+    if (processed) await loadProcessed(model, traj);
+    else await loadRaw(model, traj);
+    setStatus(`Loaded ${traj.name} (use the playback bar to animate)`);
+  } catch (err) {
+    console.error(err);
+    procNote.className = "";
+    procNote.textContent = String(err.message || err);
+    setStatus(`Failed to load trajectory: ${err.message || err}`);
+  } finally {
+    trajLoadBtn.disabled = false;
+  }
+}
+
+// --- directory rendering + navigation -------------------------------------
+function render(data) {
+  rootLabel.textContent = data.root;
+  renderBreadcrumb(data.dir);
+  renderFolders(data.parent, data.dirs);
+  renderFiles(data.files);
+  renderTopologies(data.topologies, data.coordinates, data.convert_available);
+  renderTrajectories(
+    data.files, data.topologies, data.trajectories,
+    data.ancestor_models, data.process_available,
+  );
+
+  const nLoadable = data.files.length + data.topologies.length + data.trajectories.length;
+  emptyNote.hidden = nLoadable > 0 || data.dirs.length > 0;
+  const bits = [`${data.dirs.length} folder(s)`];
+  if (data.files.length) bits.push(`${data.files.length} structure(s)`);
+  if (data.trajectories.length) bits.push(`${data.trajectories.length} trajectory(ies)`);
+  setStatus(bits.join(", "));
+}
+
+async function loadDir(dir) {
+  setStatus(`Opening ${dir || "root"}…`);
+  try {
+    const resp = await fetch(`/api/browse?dir=${encodeURIComponent(dir)}`);
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.detail || `HTTP ${resp.status}`);
+    curDir = dir;
+    render(data);
+  } catch (err) {
+    console.error(err);
+    setStatus(`Could not browse ${dir || "root"}: ${err.message || err}`);
+  }
+}
+
 async function main() {
-  const viewer = await molstar.Viewer.create("viewer", {
+  viewer = await molstar.Viewer.create("viewer", {
     layoutIsExpanded: false,
     layoutShowControls: true,
     layoutShowSequence: true,
     viewportShowExpand: true,
   });
-
-  let activeRow = null;
-
-  function markActive(el) {
-    if (activeRow) activeRow.classList.remove("active");
-    if (el) el.classList.add("active");
-    activeRow = el;
-  }
-
-  async function loadUrl(url, format, label, row) {
-    markActive(row || null);
-    setStatus(`Loading ${label}…`);
-    try {
-      await viewer.plugin.clear();
-      await viewer.loadStructureFromUrl(url, format, false);
-      setStatus(`Loaded ${label}`);
-    } catch (err) {
-      console.error(err);
-      setStatus(`Failed to load ${label}: ${err}`);
-    }
-  }
-
-  // --- native structures ---------------------------------------------------
-  function renderFiles(files) {
-    if (!files.length) return;
-    filesSection.hidden = false;
-    for (const entry of files) {
-      const li = document.createElement("li");
-      const name = document.createElement("span");
-      name.className = "name";
-      name.textContent = entry.relpath;
-      name.title = entry.relpath;
-      const fmt = document.createElement("span");
-      fmt.className = "fmt";
-      fmt.textContent = entry.format;
-      li.append(name, fmt);
-      li.addEventListener("click", () =>
-        loadUrl(`/api/file/${encodeURI(entry.relpath)}`, entry.format, entry.relpath, li),
-      );
-      fileListEl.appendChild(li);
-    }
-  }
-
-  // --- topologies (need a coordinate file) ---------------------------------
-  function renderTopologies(topologies, coordinates, convertAvailable) {
-    if (!topologies.length) return;
-    topoSection.hidden = false;
-    for (const topo of topologies) {
-      const wrap = document.createElement("div");
-      wrap.className = "topo";
-
-      const name = document.createElement("div");
-      name.className = "name";
-      const n = document.createElement("span");
-      n.textContent = topo.relpath;
-      n.title = topo.relpath;
-      const fmt = document.createElement("span");
-      fmt.className = "fmt";
-      fmt.textContent = topo.format;
-      name.append(n, fmt);
-
-      const pair = document.createElement("div");
-      pair.className = "pair";
-      const select = document.createElement("select");
-      if (!convertAvailable) {
-        const opt = document.createElement("option");
-        opt.textContent = "convert extra not installed";
-        select.append(opt);
-        select.disabled = true;
-      } else if (!coordinates.length) {
-        const opt = document.createElement("option");
-        opt.textContent = "no coordinate files found";
-        select.append(opt);
-        select.disabled = true;
-      } else {
-        for (const c of coordinates) {
-          const opt = document.createElement("option");
-          opt.value = c.relpath;
-          opt.textContent = c.relpath;
-          select.append(opt);
-        }
-      }
-      const btn = document.createElement("button");
-      btn.textContent = "Load";
-      btn.disabled = select.disabled;
-      btn.addEventListener("click", () => {
-        const coords = select.value;
-        // mol2 carries the topology's explicit bonds, so Mol* uses the real
-        // connectivity instead of guessing it from (often distorted) distances.
-        const url =
-          `/api/convert/${encodeURI(topo.relpath)}` +
-          `?coords=${encodeURIComponent(coords)}&format=mol2`;
-        loadUrl(url, "mol2", `${topo.relpath} + ${coords}`, wrap);
-      });
-      pair.append(select, btn);
-
-      wrap.append(name, pair);
-      topoListEl.appendChild(wrap);
-    }
-  }
-
-  // --- trajectories (model/topology + coordinates -> Mol* playback) --------
-  function renderTrajectories(files, topologies, trajectories, processAvailable) {
-    if (!trajectories.length) return;
-    trajSection.hidden = false;
-    if (!processAvailable) {
-      procOptions.hidden = true; // raw playback still works without the extra
-    }
-
-    // Models can be a native structure (model-url) or a topology (topology-url).
-    const models = [
-      ...files.map((f) => ({ ...f, kind: "model-url" })),
-      ...topologies.map((t) => ({ ...t, kind: "topology-url" })),
-    ];
-    for (const m of models) {
-      const opt = document.createElement("option");
-      opt.value = m.relpath;
-      opt.textContent = `${m.relpath} (${m.format})`;
-      trajModelSel.appendChild(opt);
-    }
-    for (const t of trajectories) {
-      const opt = document.createElement("option");
-      opt.value = t.relpath;
-      opt.textContent = `${t.relpath} (${t.format})`;
-      trajCoordsSel.appendChild(opt);
-    }
-
-    const noModel = models.length === 0;
-    trajLoadBtn.disabled = noModel;
-    if (noModel) {
-      const opt = document.createElement("option");
-      opt.textContent = "no model/topology found";
-      trajModelSel.appendChild(opt);
-    }
-
-    function processingRequested() {
-      return (
-        processAvailable &&
-        (Number(procStride.value) > 1 ||
-          procStrip.checked ||
-          procAlign.checked ||
-          procSelect.value.trim() !== "")
-      );
-    }
-
-    async function loadProcessed(model, traj) {
-      procNote.textContent = "Processing on the server…";
-      procNote.className = "ok";
-      const body = {
-        top: model.relpath,
-        traj: traj.relpath,
-        select: procSelect.value.trim() || "all",
-        strip: procStrip.checked,
-        stride: Math.max(1, Number(procStride.value) || 1),
-        align: procAlign.checked,
-        align_select: procAlignSel.value.trim() || "backbone",
-      };
-      const resp = await fetch("/api/prepare", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      const data = await resp.json();
-      if (!resp.ok) throw new Error(data.detail || `HTTP ${resp.status}`);
-      procNote.textContent = `${data.n_atoms} atoms, ${data.n_frames} frames`;
-      await viewer.plugin.clear();
-      await viewer.loadTrajectory({
-        model: { kind: "model-url", url: data.model_url, format: data.model_format, isBinary: false },
-        coordinates: {
-          kind: "coordinates-url",
-          url: data.trajectory_url,
-          format: data.trajectory_format,
-          isBinary: true,
-        },
-      });
-      return data;
-    }
-
-    async function loadRaw(model, traj) {
-      await viewer.plugin.clear();
-      await viewer.loadTrajectory({
-        // model/topology files (psf/pdb/gro) are text; trajectories are binary
-        model: {
-          kind: model.kind,
-          url: `/api/file/${encodeURI(model.relpath)}`,
-          format: model.format,
-          isBinary: false,
-        },
-        coordinates: {
-          kind: "coordinates-url",
-          url: `/api/file/${encodeURI(traj.relpath)}`,
-          format: traj.format,
-          isBinary: true,
-        },
-      });
-    }
-
-    trajLoadBtn.addEventListener("click", async () => {
-      const model = models[trajModelSel.selectedIndex];
-      const traj = trajectories[trajCoordsSel.selectedIndex];
-      if (!model || !traj) return;
-      markActive(null);
-      procNote.textContent = "";
-      trajLoadBtn.disabled = true;
-      const processed = processingRequested();
-      setStatus(`${processed ? "Processing" : "Loading"} ${traj.relpath} on ${model.relpath}…`);
-      try {
-        if (processed) {
-          await loadProcessed(model, traj);
-        } else {
-          await loadRaw(model, traj);
-        }
-        setStatus(`Loaded ${traj.relpath} (use the playback bar to animate)`);
-      } catch (err) {
-        console.error(err);
-        procNote.className = "";
-        procNote.textContent = String(err.message || err);
-        setStatus(`Failed to load trajectory: ${err.message || err}`);
-      } finally {
-        trajLoadBtn.disabled = false;
-      }
-    });
-  }
-
-  // --- fetch + render ------------------------------------------------------
-  try {
-    const resp = await fetch("/api/files");
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-    const data = await resp.json();
-    rootLabel.textContent = data.root;
-
-    renderFiles(data.files);
-    renderTopologies(data.topologies, data.coordinates, data.convert_available);
-    renderTrajectories(
-      data.files, data.topologies, data.trajectories, data.process_available,
-    );
-
-    const total = data.files.length + data.topologies.length;
-    if (!total) {
-      setStatus("No loadable structures found under the data root.");
-    } else {
-      const extra = data.topologies.length
-        ? `, ${data.topologies.length} topolog${data.topologies.length === 1 ? "y" : "ies"}`
-        : "";
-      setStatus(`${data.files.length} structure(s)${extra}. Click one to view.`);
-    }
-  } catch (err) {
-    console.error(err);
-    rootLabel.textContent = "—";
-    setStatus(`Could not list files: ${err}`);
-  }
+  trajLoadBtn.addEventListener("click", onTrajLoad);
+  await loadDir("");
 }
 
 main();
