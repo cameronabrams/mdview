@@ -20,3 +20,6 @@ dist/
 # Vendored frontend tarball scratch (the extracted assets ARE tracked)
 /static-tmp/
 *.tgz
+
+# Small binary trajectory fixtures ARE tracked (override a global *.dcd ignore).
+!tests/data/*.dcd
