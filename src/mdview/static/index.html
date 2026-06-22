@@ -48,6 +48,15 @@
       border-radius: 3px; padding: 5px 9px; cursor: pointer; font-size: 12px; }
     .traj button:hover { background: #47604e; }
     .traj button:disabled { opacity: 0.5; cursor: not-allowed; }
+    #proc-options { margin: 4px 0 8px; padding: 6px 0; border-top: 1px solid #23262e; }
+    .traj input[type=number], .traj input[type=text] { flex: 1; min-width: 0;
+      background: #14161b; color: #d7dae0; border: 1px solid #2c2f38;
+      border-radius: 3px; padding: 3px; font-size: 12px; }
+    .traj label.chk { flex: 1; color: #c4c8d0; display: flex; align-items: center;
+      gap: 6px; cursor: pointer; }
+    .traj label.chk input { flex: 0 0 auto; }
+    #proc-note { color: #d98b8b; font-size: 11px; padding: 2px 0; min-height: 0; }
+    #proc-note.ok { color: #8b909a; }
     #status { padding: 8px 14px; color: #8b909a; font-size: 12px; border-top: 1px solid #2c2f38; }
     #viewer { position: relative; flex: 1; min-width: 0; }
   </style>
@@ -73,6 +82,19 @@
               <select id="traj-model"></select></div>
             <div class="row"><label for="traj-coords">traj</label>
               <select id="traj-coords"></select></div>
+            <div id="proc-options">
+              <div class="row"><label for="proc-stride">stride</label>
+                <input id="proc-stride" type="number" min="1" step="1" value="1"></div>
+              <div class="row"><label class="chk"><input id="proc-strip" type="checkbox">
+                strip solvent (water + ions)</label></div>
+              <div class="row"><label for="proc-select">select</label>
+                <input id="proc-select" type="text" placeholder="MDAnalysis selection (default: all)"></div>
+              <div class="row"><label class="chk"><input id="proc-align" type="checkbox">
+                align to first frame</label></div>
+              <div class="row"><label for="proc-align-sel">fit on</label>
+                <input id="proc-align-sel" type="text" placeholder="backbone"></div>
+              <div id="proc-note"></div>
+            </div>
             <button id="traj-load">▶ Load &amp; play</button>
           </div>
         </div>

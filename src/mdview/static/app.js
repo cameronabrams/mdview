@@ -12,6 +12,13 @@ const trajSection = document.getElementById("traj-section");
 const trajModelSel = document.getElementById("traj-model");
 const trajCoordsSel = document.getElementById("traj-coords");
 const trajLoadBtn = document.getElementById("traj-load");
+const procOptions = document.getElementById("proc-options");
+const procStride = document.getElementById("proc-stride");
+const procStrip = document.getElementById("proc-strip");
+const procSelect = document.getElementById("proc-select");
+const procAlign = document.getElementById("proc-align");
+const procAlignSel = document.getElementById("proc-align-sel");
+const procNote = document.getElementById("proc-note");
 const statusEl = document.getElementById("status");
 const rootLabel = document.getElementById("root-label");
 
@@ -128,9 +135,12 @@ async function main() {
   }
 
   // --- trajectories (model/topology + coordinates -> Mol* playback) --------
-  function renderTrajectories(files, topologies, trajectories) {
+  function renderTrajectories(files, topologies, trajectories, processAvailable) {
     if (!trajectories.length) return;
     trajSection.hidden = false;
+    if (!processAvailable) {
+      procOptions.hidden = true; // raw playback still works without the extra
+    }
 
     // Models can be a native structure (model-url) or a topology (topology-url).
     const models = [
@@ -158,33 +168,91 @@ async function main() {
       trajModelSel.appendChild(opt);
     }
 
+    function processingRequested() {
+      return (
+        processAvailable &&
+        (Number(procStride.value) > 1 ||
+          procStrip.checked ||
+          procAlign.checked ||
+          procSelect.value.trim() !== "")
+      );
+    }
+
+    async function loadProcessed(model, traj) {
+      procNote.textContent = "Processing on the server…";
+      procNote.className = "ok";
+      const body = {
+        top: model.relpath,
+        traj: traj.relpath,
+        select: procSelect.value.trim() || "all",
+        strip: procStrip.checked,
+        stride: Math.max(1, Number(procStride.value) || 1),
+        align: procAlign.checked,
+        align_select: procAlignSel.value.trim() || "backbone",
+      };
+      const resp = await fetch("/api/prepare", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = await resp.json();
+      if (!resp.ok) throw new Error(data.detail || `HTTP ${resp.status}`);
+      procNote.textContent = `${data.n_atoms} atoms, ${data.n_frames} frames`;
+      await viewer.plugin.clear();
+      await viewer.loadTrajectory({
+        model: { kind: "model-url", url: data.model_url, format: data.model_format, isBinary: false },
+        coordinates: {
+          kind: "coordinates-url",
+          url: data.trajectory_url,
+          format: data.trajectory_format,
+          isBinary: true,
+        },
+      });
+      return data;
+    }
+
+    async function loadRaw(model, traj) {
+      await viewer.plugin.clear();
+      await viewer.loadTrajectory({
+        // model/topology files (psf/pdb/gro) are text; trajectories are binary
+        model: {
+          kind: model.kind,
+          url: `/api/file/${encodeURI(model.relpath)}`,
+          format: model.format,
+          isBinary: false,
+        },
+        coordinates: {
+          kind: "coordinates-url",
+          url: `/api/file/${encodeURI(traj.relpath)}`,
+          format: traj.format,
+          isBinary: true,
+        },
+      });
+    }
+
     trajLoadBtn.addEventListener("click", async () => {
       const model = models[trajModelSel.selectedIndex];
       const traj = trajectories[trajCoordsSel.selectedIndex];
       if (!model || !traj) return;
       markActive(null);
-      setStatus(`Loading ${traj.relpath} on ${model.relpath}…`);
+      procNote.textContent = "";
+      trajLoadBtn.disabled = true;
+      const processed = processingRequested();
+      setStatus(`${processed ? "Processing" : "Loading"} ${traj.relpath} on ${model.relpath}…`);
       try {
-        await viewer.plugin.clear();
-        await viewer.loadTrajectory({
-          // model/topology files (psf/pdb/gro) are text; trajectories are binary
-          model: {
-            kind: model.kind,
-            url: `/api/file/${encodeURI(model.relpath)}`,
-            format: model.format,
-            isBinary: false,
-          },
-          coordinates: {
-            kind: "coordinates-url",
-            url: `/api/file/${encodeURI(traj.relpath)}`,
-            format: traj.format,
-            isBinary: true,
-          },
-        });
+        if (processed) {
+          await loadProcessed(model, traj);
+        } else {
+          await loadRaw(model, traj);
+        }
         setStatus(`Loaded ${traj.relpath} (use the playback bar to animate)`);
       } catch (err) {
         console.error(err);
-        setStatus(`Failed to load trajectory: ${err}`);
+        procNote.className = "";
+        procNote.textContent = String(err.message || err);
+        setStatus(`Failed to load trajectory: ${err.message || err}`);
+      } finally {
+        trajLoadBtn.disabled = false;
       }
     });
   }
@@ -198,7 +266,9 @@ async function main() {
 
     renderFiles(data.files);
     renderTopologies(data.topologies, data.coordinates, data.convert_available);
-    renderTrajectories(data.files, data.topologies, data.trajectories);
+    renderTrajectories(
+      data.files, data.topologies, data.trajectories, data.process_available,
+    );
 
     const total = data.files.length + data.topologies.length;
     if (!total) {

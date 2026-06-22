@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
 
 from . import __version__
 from .config import CONTENT_TYPES, SERVEABLE_EXTENSIONS, Settings
@@ -18,8 +20,36 @@ from .convert import (
     parmed_available,
 )
 from .files import resolve_within_root, scan
+from .process import (
+    DEFAULT_ALIGN_SELECTION,
+    STRIP_SOLVENT_FILTER,
+    ProcessError,
+    ProcessUnavailable,
+    prepare,
+    process_available,
+)
+from .process import _paths as _prepared_paths
 
 STATIC_DIR = Path(__file__).parent / "static"
+_HEX64 = re.compile(r"^[0-9a-f]{64}$")
+
+
+class PrepareRequest(BaseModel):
+    top: str
+    traj: str
+    select: str = "all"
+    strip: bool = False  # AND the water+ions strip filter onto `select`
+    stride: int = 1
+    align: bool = False
+    align_select: str = DEFAULT_ALIGN_SELECTION
+
+    def effective_select(self) -> str:
+        sel = self.select.strip() or "all"
+        if not self.strip:
+            return sel
+        if sel == "all":
+            return STRIP_SOLVENT_FILTER
+        return f"({sel}) and ({STRIP_SOLVENT_FILTER})"
 
 
 def create_app(settings: Settings) -> FastAPI:
@@ -46,6 +76,7 @@ def create_app(settings: Settings) -> FastAPI:
         return {
             "root": str(settings.root),
             "convert_available": parmed_available(),
+            "process_available": process_available(),
             **scan(settings),
         }
 
@@ -103,6 +134,52 @@ def create_app(settings: Settings) -> FastAPI:
             "pdb": "chemical/x-pdb",
         }.get(format, "text/plain")
         return Response(content=text, media_type=media_type)
+
+    @app.post("/api/prepare")
+    def api_prepare(req: PrepareRequest) -> dict:
+        """Strip/stride/align a trajectory, cache the result, return its URLs.
+
+        Produces a reduced bonded model (mol2) + processed trajectory (dcd),
+        content-addressed so identical requests are instant. Both input paths are
+        guarded against the data root.
+        """
+        top = resolve_within_root(settings.root, req.top)
+        traj = resolve_within_root(settings.root, req.traj)
+        if top is None:
+            raise HTTPException(status_code=404, detail="topology not found")
+        if traj is None:
+            raise HTTPException(status_code=404, detail="trajectory not found")
+        try:
+            result = prepare(
+                top, traj,
+                select=req.effective_select(), stride=req.stride,
+                align=req.align, align_select=req.align_select,
+            )
+        except ProcessUnavailable as exc:
+            raise HTTPException(status_code=501, detail=str(exc)) from exc
+        except ProcessError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        return {
+            "id": result["id"],
+            "model_url": f"/api/prepared/{result['id']}/model",
+            "trajectory_url": f"/api/prepared/{result['id']}/trajectory",
+            "model_format": "mol2",
+            "trajectory_format": "dcd",
+            "n_atoms": result["n_atoms"],
+            "n_frames": result["n_frames"],
+        }
+
+    @app.get("/api/prepared/{key}/{which}")
+    def api_prepared(key: str, which: str) -> FileResponse:
+        """Serve a cached processed model/trajectory by its content-address id."""
+        if not _HEX64.match(key) or which not in ("model", "trajectory"):
+            raise HTTPException(status_code=404, detail="not found")
+        model_path, traj_path = _prepared_paths(key)
+        path = model_path if which == "model" else traj_path
+        if not path.is_file():
+            raise HTTPException(status_code=404, detail="prepared file not found")
+        media_type = "chemical/x-mol2" if which == "model" else "application/octet-stream"
+        return FileResponse(path, media_type=media_type)
 
     # The SPA and vendored Mol* assets. html=True serves index.html at "/".
     app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="static")

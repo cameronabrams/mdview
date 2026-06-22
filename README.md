@@ -35,6 +35,18 @@ server detects this from the file geometry and patches `NSET` on the fly while
 streaming (the rest of the file is byte-for-byte unchanged), so these
 trajectories play correctly.
 
+**Phase 4: trajectory processing (optional `process` extra).** Before a
+trajectory reaches the browser the server can **decimate** (keep every Nth
+frame), **strip** (drop solvent/ions, or any [MDAnalysis](https://www.mdanalysis.org/)
+selection), and **align** (superpose every frame onto frame 0 to remove
+translational/rotational drift). This makes multi-GB runs usable over a thin
+tunnel and the motion legible. The reduced trajectory is written by MDAnalysis;
+the matching reduced **model** (atom count changes when stripping) is built with
+ParmEd as MOL2 so bonds survive. Results are cached on disk, content-addressed by
+(files + options), so repeated loads are instant. In the UI the **Trajectories**
+section gains stride / strip-solvent / selection / align controls. Enable with
+`uv sync --extra process`.
+
 > **Note — large trajectories.** Mol\* downloads the whole trajectory before
 > playback, so a multi-GB `.dcd` over a thin SSH tunnel will be slow. Server-side
 > frame **decimation/striding** (send every Nth frame) is the next planned step;
@@ -85,15 +97,20 @@ then open <http://localhost:8000> in your browser.
   topology with a coordinate file via ParmEd and returns MOL2 (default; preserves
   bonds), or mmCIF/PDB (which drop connectivity). Both paths guarded to the data
   root. Requires the `convert` extra.
+- `POST /api/prepare` — strip/stride/align a `{top, traj, select, strip, stride,
+  align, align_select}` request; returns cached `model_url` + `trajectory_url`
+  plus atom/frame counts. Requires the `process` extra.
+- `GET /api/prepared/{id}/{model|trajectory}` — serve a cached processed result.
 - `/` — the single-page Mol\* viewer; the vendored Mol\* build lives under
   `src/mdview/static/vendor/molstar/` (no frontend build step required).
 
 ## Roadmap
 
-- **Trajectory decimation** — a server-side stride endpoint (send every Nth
-  frame) so multi-GB trajectories are usable over a thin tunnel. Needs a
-  trajectory reader/writer with solid DCD support (e.g. MDAnalysis); ParmEd in
-  this stack reads/writes only structure formats, not DCD.
+- **Async processing** — `POST /api/prepare` is currently synchronous, so the
+  first prepare of a very large trajectory blocks the request (the cache makes
+  repeats instant). A job/progress API would smooth this over.
+- **Cache eviction** — the content-addressed processing cache under the system
+  temp dir has no size/age cap yet.
 - **Docker packaging** — optional, for running detached.
 
 ## License
