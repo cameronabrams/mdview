@@ -3,3 +3,9 @@ Version: 5.10.1
 Files: molstar.js, molstar.css (from build/viewer/)
 Source maps (*.map) intentionally omitted to keep the repo lean.
 Re-vendor: npm pack molstar && tar xzf molstar-*.tgz && cp package/build/viewer/molstar.{js,css} here
+
+LOCAL PATCH: molstar.js has its lipid-name set extended with CHARMM membrane
+residues Mol* doesn't ship (CHL1/cholesterol, PSM/sphingomyelin, SOPE/SOPS, ...)
+so they classify and render as lipids. This edit is overwritten when re-vendoring
+above — re-apply it with:  python tools/patch_molstar_lipids.py
+(idempotent; see that script for the full list).
