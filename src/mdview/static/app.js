@@ -53,7 +53,8 @@ async function loadUrl(url, format, label, row) {
   setStatus(`Loading ${label}…`);
   try {
     await viewer.plugin.clear();
-    await viewer.loadStructureFromUrl(url, format, false);
+    // pass `label` so Mol*'s state tree shows the filename, not the /api/... URL
+    await viewer.loadStructureFromUrl(url, format, false, { label });
     setStatus(`Loaded ${label}`);
   } catch (err) {
     console.error(err);
@@ -225,12 +226,14 @@ async function loadProcessed(model, traj) {
   await viewer.plugin.clear();
   await viewer.loadTrajectory({
     model: { kind: "model-url", url: data.model_url, format: data.model_format, isBinary: false },
+    modelLabel: model.name,
     coordinates: {
       kind: "coordinates-url",
       url: data.trajectory_url,
       format: data.trajectory_format,
       isBinary: true,
     },
+    coordinatesLabel: `${traj.name} (processed)`,
   });
 }
 
@@ -244,12 +247,14 @@ async function loadRaw(model, traj) {
       format: model.format,
       isBinary: false,
     },
+    modelLabel: model.name,
     coordinates: {
       kind: "coordinates-url",
       url: `/api/file/${encodeURI(traj.relpath)}`,
       format: traj.format,
       isBinary: true,
     },
+    coordinatesLabel: traj.name,
   });
 }
 
