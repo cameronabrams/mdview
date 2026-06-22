@@ -29,6 +29,21 @@ def test_bundle_recognizes_charmm_lipids():
         assert f'"{name}"' in text, f"{name} missing — run tools/patch_molstar_lipids.py"
 
 
+def test_bundle_colors_lipid_residue_names():
+    text = BUNDLE.read_text()
+    # lipid names must be keys in the residue-name color map (else all-one-color)
+    for name in ("POPC", "POPE", "CHL1", "PSM", "SOPE", "SOPS"):
+        assert f"{name}:" in text, f"{name} color missing — run tools/patch_molstar_lipids.py"
+
+
+def test_lipid_colors_are_distinct_and_stable():
+    patcher = _load_patcher()
+    a = patcher.lipid_colors()
+    b = patcher.lipid_colors()
+    assert a == b  # deterministic
+    assert len(set(a.values())) == len(a)  # every species a distinct color
+
+
 def test_patcher_is_idempotent_on_the_bundle():
     patcher = _load_patcher()
     assert patcher.patch(BUNDLE) == []  # already fully applied → no change
@@ -37,12 +52,19 @@ def test_patcher_is_idempotent_on_the_bundle():
 def test_patch_inserts_once_without_artifacts(tmp_path):
     patcher = _load_patcher()
     fake = tmp_path / "fake.js"
-    fake.write_text('var cK=new Set(["DPPC","POPC","PRPC"]);')
+    # both anchors: the recognition Set and the residue-name color map
+    fake.write_text(
+        'var cK=new Set(["DPPC","POPC","PRPC"]);'
+        'var t={ARG:255,ASP:16711680,GLU:16711680,HIS:3392505};'
+    )
 
     added = patcher.patch(fake)
-    assert "CHL1" in added and "SOPE" in added
+    assert "CHL1" in added  # a recognition name
+    assert "POPC" in added  # a color-map key
     out = fake.read_text()
-    assert '"POPC","CHL1"' in out and '"SOPS"' in out
+    assert '"POPC","CHL1"' in out  # name set extended in place
+    assert "ASP:16711680,BSM:" in out  # colors injected (sorted) right after anchor
+    assert "POPC:" in out  # the user's species got a color key
     assert ",," not in out and '""' not in out  # no comma/quote artifacts
 
     # second run is a no-op

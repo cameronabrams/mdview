@@ -1,36 +1,43 @@
 #!/usr/bin/env python3
-"""Extend Mol*'s lipid-name set so CHARMM membrane residues are recognized.
+"""Patch the vendored Mol* bundle for CHARMM membranes (idempotent, stdlib only).
 
-Mol* classifies a residue as a lipid only if its (upper-cased) name is in an
-internal set ``cK = new Set(["DAPC", ...])`` baked into the vendored
-``molstar.js``. Several common CHARMM36 species — cholesterol (CHL1),
-sphingomyelins (PSM, ...), stearoyl-oleoyl lipids (SOPE/SOPS, ...) — are missing,
-so they fall through to "generic ligand" and render/select poorly.
+Two independent fixes to ``molstar.js``, both re-applied by running this script
+after re-vendoring Mol* (see VENDOR.txt):
 
-This script injects the missing names into that set. It is **idempotent** and is
-meant to be re-run after re-vendoring Mol* (see VENDOR.txt). Pure stdlib.
+1. **Recognition** — Mol* classifies a residue as a lipid only if its name is in
+   an internal set ``cK = new Set(["DAPC", ...])``. It omits cholesterol (CHL1),
+   sphingomyelins (PSM, ...), stearoyl-oleoyl lipids (SOPE/SOPS, ...), so those
+   render/select as generic ligands. We add the missing names.
+
+2. **Residue-name colors** — Mol*'s "Residue Name" color theme uses a fixed map of
+   amino-acid/nucleotide names (``{ARG:255,ASP:16711680, ...}``) and paints every
+   other residue with one "Unknown" color, so all lipids look identical. We inject
+   distinct colors for lipid residue names.
 """
 
 from __future__ import annotations
 
+import colorsys
 import sys
 from pathlib import Path
 
-# CHARMM36 lipid/sterol residue names commonly absent from Mol*'s lipid set.
-# The first four are the user's must-haves; the rest are low-risk extras.
+# (1) CHARMM36 lipid/sterol names commonly absent from Mol*'s recognition set.
 EXTRA_LIPIDS = [
-    # sterols
-    "CHL1", "CHOL", "ERG",
-    # sphingomyelins
-    "PSM", "SSM", "OSM", "BSM", "LSM", "NSM",
-    # stearoyl-oleoyl glycerophospholipids
-    "SOPC", "SOPE", "SOPS", "SOPA", "SOPG",
-    # a few common saturated species
-    "DMPC", "DMPG", "DSPC", "DSPE", "DSPG", "DPPG",
+    "CHL1", "CHOL", "ERG",                          # sterols
+    "PSM", "SSM", "OSM", "BSM", "LSM", "NSM",       # sphingomyelins
+    "SOPC", "SOPE", "SOPS", "SOPA", "SOPG",         # stearoyl-oleoyl
+    "DMPC", "DMPG", "DSPC", "DSPE", "DSPG", "DPPG",  # common saturated
 ]
+NAME_ANCHOR = '"POPC",'  # unique token inside the recognition Set
 
-# Unique token inside the lipid set used as the injection point.
-ANCHOR = '"POPC",'
+# (2) Lipid residue names to colorize in the residue-name color theme's map.
+LIPID_COLOR_NAMES = [
+    "POPC", "POPE", "POPS", "POPG", "POPA", "POPI",
+    "DOPC", "DOPE", "DPPC", "DPPE", "DPPS", "DMPC", "DMPG", "DLPC", "DSPC",
+    "SOPC", "SOPE", "SOPS", "SOPA",
+    "CHL1", "CHOL", "ERG", "PSM", "SSM", "OSM", "BSM", "NSM",
+]
+COLOR_ANCHOR = "{ARG:255,ASP:16711680,"  # unique; front of the color map literal
 
 BUNDLE = (
     Path(__file__).resolve().parent.parent
@@ -38,24 +45,57 @@ BUNDLE = (
 )
 
 
-def patch(bundle_path: Path) -> list[str]:
-    """Inject any missing EXTRA_LIPIDS into the bundle's lipid set.
+_GOLDEN = 0.6180339887498949  # golden-ratio conjugate — spreads hues maximally
 
-    Returns the names added (empty if already fully applied). Raises if the
-    anchor can't be found (Mol* internals changed — revisit this script).
+
+def lipid_colors() -> dict[str, int]:
+    """Deterministic, distinct 24-bit RGB color per lipid name.
+
+    Hues step by the golden ratio so even alphabetically-adjacent names get very
+    different colors (and value alternates slightly for extra separation).
     """
-    text = bundle_path.read_text()
+    names = sorted(set(LIPID_COLOR_NAMES))
+    out: dict[str, int] = {}
+    for i, name in enumerate(names):
+        hue = (i * _GOLDEN) % 1.0
+        val = 0.95 if i % 2 == 0 else 0.78
+        r, g, b = colorsys.hsv_to_rgb(hue, 0.62, val)
+        out[name] = (round(r * 255) << 16) | (round(g * 255) << 8) | round(b * 255)
+    return out
+
+
+def _inject_names(text: str) -> tuple[str, list[str]]:
     missing = [n for n in EXTRA_LIPIDS if f'"{n}"' not in text]
     if not missing:
-        return []
-    if ANCHOR not in text:
-        raise RuntimeError(
-            f"anchor {ANCHOR!r} not found in {bundle_path.name}; "
-            "the Mol* lipid set may have changed — update this script."
-        )
-    injection = ANCHOR + "".join(f'"{n}",' for n in missing)
-    bundle_path.write_text(text.replace(ANCHOR, injection, 1))
-    return missing
+        return text, []
+    if NAME_ANCHOR not in text:
+        raise RuntimeError(f"name anchor {NAME_ANCHOR!r} not found — Mol* changed.")
+    injected = NAME_ANCHOR + "".join(f'"{n}",' for n in missing)
+    return text.replace(NAME_ANCHOR, injected, 1), missing
+
+
+def _inject_colors(text: str) -> tuple[str, list[str]]:
+    colors = lipid_colors()
+    mi = text.find(COLOR_ANCHOR)
+    region = text[mi : mi + 6000] if mi >= 0 else ""
+    missing = [n for n in colors if f"{n}:" not in region]
+    if not missing:
+        return text, []
+    if mi < 0:
+        raise RuntimeError(f"color anchor {COLOR_ANCHOR!r} not found — Mol* changed.")
+    injected = COLOR_ANCHOR + "".join(f"{n}:{colors[n]}," for n in missing)
+    return text.replace(COLOR_ANCHOR, injected, 1), missing
+
+
+def patch(bundle_path: Path) -> list[str]:
+    """Apply both injections idempotently; return everything added (empty if none)."""
+    text = bundle_path.read_text()
+    text, added_names = _inject_names(text)
+    text, added_colors = _inject_colors(text)
+    added = added_names + added_colors
+    if added:
+        bundle_path.write_text(text)
+    return added
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -63,10 +103,9 @@ def main(argv: list[str] | None = None) -> int:
     bundle = Path(args[0]) if args else BUNDLE
     added = patch(bundle)
     if added:
-        print(f"patched {bundle.name}: added {len(added)} lipid name(s): "
-              f"{', '.join(added)}")
+        print(f"patched {bundle.name}: added {len(added)} item(s): {', '.join(added)}")
     else:
-        print(f"{bundle.name}: lipid names already applied (no change)")
+        print(f"{bundle.name}: lipid names + colors already applied (no change)")
     return 0
 
 
