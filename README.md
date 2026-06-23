@@ -64,11 +64,24 @@ image.
 
 ## Install
 
-Requires Python ≥ 3.10 and [uv](https://docs.astral.sh/uv/).
+Requires Python ≥ 3.10. Installing the package puts an **`mdview`** command on
+your `PATH` (the Mol\* viewer is bundled — no Node/build step for users).
+
+**As a user** (pip, straight from GitHub):
 
 ```bash
-uv sync                 # runtime only
-uv sync --extra dev     # + pytest/httpx for the test suite
+pip install "git+https://github.com/cameronabrams/mdview"               # base: browse + play
+pip install "mdview[process] @ git+https://github.com/cameronabrams/mdview"  # + convert & trajectory processing
+```
+
+- base = FastAPI + the viewer (static structures, raw trajectory playback).
+- `[convert]` adds PSF→MOL2 conversion (ParmEd); `[process]` adds that **and**
+  trajectory strip/stride/align (MDAnalysis). `[process]` is the full feature set.
+
+**From a clone** (development), with [uv](https://docs.astral.sh/uv/):
+
+```bash
+uv sync --extra process --extra dev    # full features + test deps
 ```
 
 ## Run

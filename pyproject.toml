@@ -10,11 +10,36 @@ readme = "README.md"
 requires-python = ">=3.10"
 authors = [{ name = "Cameron F. Abrams", email = "cfa22@drexel.edu" }]
 license = { text = "MIT" }
-keywords = ["molecular-dynamics", "visualization", "molstar", "fastapi", "namd", "gromacs"]
+license-files = ["LICENSE"]
+keywords = [
+    "molecular-dynamics", "visualization", "molstar", "fastapi",
+    "namd", "gromacs", "charmm", "trajectory", "membrane", "mdanalysis",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Web Environment",
+    "Framework :: FastAPI",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Bio-Informatics",
+    "Topic :: Scientific/Engineering :: Chemistry",
+    "Topic :: Scientific/Engineering :: Visualization",
+]
 dependencies = [
     "fastapi>=0.110",
     "uvicorn[standard]>=0.29",
 ]
+
+[project.urls]
+Homepage = "https://github.com/cameronabrams/mdview"
+Repository = "https://github.com/cameronabrams/mdview"
+Issues = "https://github.com/cameronabrams/mdview/issues"
 
 [project.optional-dependencies]
 # Server-side format conversion / topology+coords merging (phase 2). Optional:
