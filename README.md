@@ -71,12 +71,15 @@ your `PATH` (the Mol\* viewer is bundled — no Node/build step for users).
 
 ```bash
 pip install "git+https://github.com/cameronabrams/mdview"               # base: browse + play
-pip install "mdview[process] @ git+https://github.com/cameronabrams/mdview"  # + convert & trajectory processing
+pip install "mdview-web[process] @ git+https://github.com/cameronabrams/mdview"  # + convert & trajectory processing
 ```
 
 - base = FastAPI + the viewer (static structures, raw trajectory playback).
 - `[convert]` adds PSF→MOL2 conversion (ParmEd); `[process]` adds that **and**
   trajectory strip/stride/align (MDAnalysis). `[process]` is the full feature set.
+- The distribution is named **`mdview-web`** (the plain `mdview` is taken on
+  PyPI), but it still installs the `mdview` command and the `mdview` import — so
+  the extras form is `mdview-web[process]`, while everything you *run* is `mdview`.
 
 **From a clone** (development), with [uv](https://docs.astral.sh/uv/):
 

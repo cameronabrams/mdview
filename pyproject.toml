@@ -3,7 +3,10 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "mdview"
+# Distribution (PyPI) name. The plain "mdview" is already claimed on PyPI by
+# another author, so the distribution is "mdview-web"; the import package and the
+# installed command both remain "mdview" (see [tool.hatch...] and [project.scripts]).
+name = "mdview-web"
 version = "0.1.0"
 description = "Browser-served interactive visualization of molecular dynamics systems, designed for access over an SSH tunnel."
 readme = "README.md"
