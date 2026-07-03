@@ -98,23 +98,105 @@ function renderFolders(parent, dirs) {
 }
 
 // --- native structures ----------------------------------------------------
-function renderFiles(files) {
+function renderFiles(files, coordinates, convertAvailable) {
   fileListEl.replaceChildren();
   filesSection.hidden = !files.length;
+  // A structure that can also supply coordinates (e.g. .pdb/.gro) can be paired
+  // with a topology for real bonds + untruncated residue names (SNFG symbols).
+  const coordSet = new Set(coordinates.map((c) => c.relpath));
   for (const entry of files) {
     const li = document.createElement("li");
     const name = document.createElement("span");
     name.className = "name";
     name.textContent = entry.name;
     name.title = entry.relpath;
+
+    const right = document.createElement("span");
+    right.className = "file-actions";
+    if (convertAvailable && coordSet.has(entry.relpath)) {
+      const bonds = document.createElement("button");
+      bonds.className = "bonds-btn";
+      bonds.textContent = "⚛ bonds";
+      bonds.title = "Load via a matching topology — real bonds + glycan (SNFG) symbols";
+      bonds.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        loadWithTopology(entry, li);
+      });
+      right.appendChild(bonds);
+    }
     const fmt = document.createElement("span");
     fmt.className = "fmt";
     fmt.textContent = entry.format;
-    li.append(name, fmt);
+    right.appendChild(fmt);
+
+    li.append(name, right);
     li.addEventListener("click", () =>
       loadUrl(`/api/file/${encodeURI(entry.relpath)}`, entry.format, entry.name, li),
     );
     fileListEl.appendChild(li);
+  }
+}
+
+// Load a coordinate-bearing structure through a matching topology (PSF/prmtop):
+// the server merges them into MOL2, which carries explicit bonds AND the
+// topology's full residue names — so Mol* draws carbohydrate symbols that a
+// bare PDB (with truncated names like ANE5) loses.
+async function loadWithTopology(entry, row) {
+  setStatus(`Finding a topology for ${entry.name}…`);
+  let data;
+  try {
+    const resp = await fetch(
+      `/api/match-topology?coords=${encodeURIComponent(entry.relpath)}`,
+    );
+    data = await resp.json();
+    if (!resp.ok) throw new Error(data.detail || `HTTP ${resp.status}`);
+  } catch (err) {
+    setStatus(`Topology lookup failed: ${err.message || err}`);
+    return;
+  }
+  const matches = data.topologies.filter((t) => t.match);
+  const candidates = matches.length ? matches : data.topologies;
+  if (!candidates.length) {
+    setStatus(`No .psf/.prmtop topology near ${entry.name} to pair with.`);
+    return;
+  }
+  if (candidates.length === 1) loadConverted(candidates[0], entry, row);
+  else pickTopology(candidates, entry, row, matches.length > 0);
+}
+
+function loadConverted(topo, entry, row) {
+  // mol2 carries the topology's explicit bonds (real connectivity, not a guess).
+  const url =
+    `/api/convert/${encodeURI(topo.relpath)}` +
+    `?coords=${encodeURIComponent(entry.relpath)}&format=mol2`;
+  loadUrl(url, "mol2", `${entry.name} + ${topo.name}`, row);
+}
+
+// More than one candidate topology: drop an inline picker below the row.
+function pickTopology(candidates, entry, row, haveMatches) {
+  const next = row.nextElementSibling;
+  if (next && next.classList.contains("topo-picker")) next.remove();
+  const li = document.createElement("li");
+  li.className = "topo-picker";
+  const select = document.createElement("select");
+  for (const t of candidates) {
+    const tag = t.ancestor ? " ↑" : "";
+    const count = t.n_atoms != null ? ` — ${t.n_atoms} atoms` : "";
+    select.append(new Option(`${t.name}${tag}${count}`, t.relpath));
+  }
+  select.addEventListener("click", (ev) => ev.stopPropagation());
+  const btn = document.createElement("button");
+  btn.textContent = "Load";
+  btn.addEventListener("click", (ev) => {
+    ev.stopPropagation();
+    const topo = candidates.find((t) => t.relpath === select.value);
+    li.remove();
+    loadConverted(topo, entry, row);
+  });
+  li.append(select, btn);
+  row.after(li);
+  if (!haveMatches) {
+    setStatus("No exact atom-count match — pick a topology (convert will verify).");
   }
 }
 
@@ -286,7 +368,7 @@ function render(data) {
   rootLabel.textContent = data.root;
   renderBreadcrumb(data.dir);
   renderFolders(data.parent, data.dirs);
-  renderFiles(data.files);
+  renderFiles(data.files, data.coordinates, data.convert_available);
   renderTopologies(data.topologies, data.coordinates, data.convert_available);
   renderTrajectories(
     data.files, data.topologies, data.trajectories,

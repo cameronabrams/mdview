@@ -55,6 +55,17 @@ topology in a parent dir and trajectories in an `output/` subdir, the trajectory
 **model** picker also offers model-eligible files from ancestor folders (shown
 with a `↑` prefix), so you can pair a `.dcd` with a `.psf` one level up.
 
+**Load a PDB with its topology (bonds + glycan symbols).** A coordinate-bearing
+structure (`.pdb`/`.gro`) in the **Structures** list carries a small **⚛ bonds**
+action (when the `convert` extra is present). It finds a topology (`.psf`/
+`.prmtop`) in the same folder — or an ancestor — whose **atom count matches**,
+and loads the pair through the MOL2 convert path. This gives real connectivity
+*and* the topology's untruncated residue names, so Mol\* draws carbohydrate
+(SNFG) symbols that a bare PDB loses: CHARMM writes 6-character glycan names
+(`ANE5AC`→Neu5Ac, `BGLCNA`→GlcNAc) that a PDB truncates to `ANE5`/`BGLC`, which
+Mol\* can't recognize — the PSF keeps the full names. When more than one topology
+matches, an inline picker appears; the conversion re-checks atom counts.
+
 **Phase 6: render to the server.** The sidebar **Render** panel captures the
 current Mol\* view (1×/2×/4× supersampling) and writes the PNG to a directory on
 the **workstation** (`--render-dir`, default `~/mdview-renders`) — so figures stay
@@ -96,7 +107,8 @@ uv run mdview serve --root /path/to/your/structures --port 8000
 Point `--root` at a broad directory (e.g. `~/` or a simulations tree) and browse
 its subfolders in the sidebar to find a system. Rendered images are written to
 `--render-dir` (default `~/mdview-renders`). Binds `127.0.0.1` by default
-(tunnel-only; no authentication).
+(tunnel-only; no authentication); pass `--host 0.0.0.0` to expose it on all
+interfaces (only behind a trusted network or reverse proxy — there is no auth).
 
 ### Access over an SSH tunnel
 

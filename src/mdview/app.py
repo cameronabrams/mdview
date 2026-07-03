@@ -19,7 +19,7 @@ from .convert import (
     convert,
     parmed_available,
 )
-from .files import browse, resolve_within_root, scan
+from .files import browse, match_topologies, resolve_within_root, scan
 from .process import (
     DEFAULT_ALIGN_SELECTION,
     STRIP_SOLVENT_FILTER,
@@ -98,6 +98,19 @@ def create_app(settings: Settings) -> FastAPI:
             "process_available": process_available(),
             **result,
         }
+
+    @app.get("/api/match-topology")
+    def api_match_topology(coords: str) -> dict:
+        """Topologies pairable with a coordinate file (for one-click 'load with bonds').
+
+        Flags candidates whose atom count matches ``coords`` so the UI can offer a
+        PDB-centric "load with a matching topology" instead of the topology-first
+        pairing flow. The convert step re-checks atom counts, so this is a hint.
+        """
+        result = match_topologies(settings, coords)
+        if result is None:
+            raise HTTPException(status_code=404, detail="coordinate file not found")
+        return {"convert_available": parmed_available(), **result}
 
     @app.get("/api/file/{relpath:path}")
     def api_file(relpath: str) -> FileResponse:

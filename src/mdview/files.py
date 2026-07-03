@@ -132,6 +132,105 @@ def list_structures(settings: Settings) -> list[dict]:
     return scan(settings)["files"]
 
 
+_atom_count_cache: dict[tuple[str, int, int], int | None] = {}
+
+
+def _count_atoms(path: Path) -> int | None:
+    """Best-effort atom count for a topology/coordinate file, or None if unknown.
+
+    Reads only as much as needed: PSF/prmtop expose the count in a header field,
+    so we stop as soon as it's read; PDB/gro are counted from their atom records.
+    Used to pair a coordinate file with a compatible topology (equal atom counts).
+    """
+    suffix = path.suffix.lower()
+    try:
+        if suffix == ".psf":
+            with path.open("rb") as fh:
+                for raw in fh:
+                    if b"!NATOM" in raw:
+                        return int(raw.split(b"!NATOM")[0].split()[-1])
+            return None
+        if suffix in {".prmtop", ".parm7"}:
+            with path.open("r", errors="ignore") as fh:
+                lines = iter(fh)
+                for line in lines:
+                    if line.startswith("%FLAG POINTERS"):
+                        next(lines, "")          # skip the %FORMAT line
+                        return int(next(lines, "").split()[0])
+            return None
+        if suffix in {".pdb", ".ent", ".pqr"}:
+            n = 0
+            with path.open("rb") as fh:
+                for raw in fh:
+                    if raw.startswith(b"ATOM") or raw.startswith(b"HETATM"):
+                        n += 1
+            return n
+        if suffix == ".gro":
+            with path.open("r", errors="ignore") as fh:
+                fh.readline()                    # title line
+                return int(fh.readline().strip())
+    except (OSError, ValueError, IndexError):
+        return None
+    return None
+
+
+def count_atoms(path: Path) -> int | None:
+    """Cached :func:`_count_atoms`, invalidated when the file's size/mtime change."""
+    try:
+        st = path.stat()
+    except OSError:
+        return None
+    key = (str(path), st.st_size, int(st.st_mtime))
+    if key not in _atom_count_cache:
+        _atom_count_cache[key] = _count_atoms(path)
+    return _atom_count_cache[key]
+
+
+def match_topologies(settings: Settings, coords_rel: str) -> dict | None:
+    """Topologies (this folder + ancestors) pairable with ``coords_rel``.
+
+    A coordinate file (e.g. a ``.pdb``) can be given real bonds — and its
+    untruncated residue names, so Mol* draws carbohydrate/SNFG symbols — by
+    merging it with a topology (``.psf``/``.prmtop``) via :func:`mdview.convert`.
+    This finds candidate topologies and flags the ones whose atom count equals the
+    coordinate file's, so the UI can offer a one-click "load with bonds". Matches
+    are listed first, same-folder before ancestors. Returns None if ``coords_rel``
+    escapes the root or isn't a file.
+    """
+    root = settings.root
+    coord_path = resolve_within_root(root, coords_rel)
+    if coord_path is None:
+        return None
+    coord_atoms = count_atoms(coord_path)
+
+    seen: set[Path] = set()
+    topos: list[dict] = []
+    origin = coord_path.parent
+    folder = origin
+    while True:
+        for child in sorted(folder.iterdir()):
+            if not child.is_file() or child.name.startswith("."):
+                continue
+            if child.suffix.lower() not in TOPOLOGY_EXTENSIONS or child in seen:
+                continue
+            seen.add(child)
+            n = count_atoms(child)
+            topos.append({
+                "name": child.name,
+                "relpath": child.relative_to(root).as_posix(),
+                "format": TOPOLOGY_EXTENSIONS[child.suffix.lower()],
+                "n_atoms": n,
+                "match": coord_atoms is not None and n == coord_atoms,
+                "ancestor": folder != origin,
+            })
+        if folder == root:
+            break
+        folder = folder.parent
+
+    topos.sort(key=lambda t: (not t["match"], t["ancestor"], t["name"].lower()))
+    return {"coords": coords_rel, "coord_atoms": coord_atoms, "topologies": topos}
+
+
 def resolve_within_root(root: Path, relpath: str) -> Path | None:
     """Resolve ``relpath`` under ``root``, or None if it escapes the root.
 

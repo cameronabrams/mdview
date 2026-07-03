@@ -36,6 +36,17 @@
     ul.file-list li.active { background: #2f3340; color: #fff; }
     ul.file-list .fmt { color: #8b909a; font-size: 11px; text-transform: uppercase; flex: 0 0 auto; }
     ul.file-list .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    ul.file-list .file-actions { display: flex; align-items: center; gap: 7px; flex: 0 0 auto; }
+    .bonds-btn { background: #2f3a4d; color: #cdd6f4; border: 1px solid #3a4a63;
+      border-radius: 3px; padding: 1px 6px; cursor: pointer; font-size: 11px; white-space: nowrap; }
+    .bonds-btn:hover { background: #3a4a63; }
+    ul.file-list li.topo-picker { display: flex; gap: 6px; background: #202430; cursor: default; }
+    ul.file-list li.topo-picker:hover { background: #202430; }
+    li.topo-picker select { flex: 1; min-width: 0; background: #14161b; color: #d7dae0;
+      border: 1px solid #2c2f38; border-radius: 3px; padding: 3px; font-size: 12px; }
+    li.topo-picker button { background: #3a3f4d; color: #fff; border: none; border-radius: 3px;
+      padding: 3px 9px; cursor: pointer; font-size: 12px; flex: 0 0 auto; }
+    li.topo-picker button:hover { background: #474d5e; }
     .topo { padding: 7px 14px; border-bottom: 1px solid #23262e; }
     .topo .name { display: flex; justify-content: space-between; gap: 8px; }
     .topo .name span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
