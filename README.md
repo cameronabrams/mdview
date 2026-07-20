@@ -73,6 +73,18 @@ where your data and notes live instead of only downloading to the laptop. Saved
 renders appear as a thumbnail gallery in the sidebar; click one to open the full
 image.
 
+**Phase 7: CHARMM lipid/sterol recognition.** The vendored Mol\* build is
+patched (see [`tools/patch_molstar_lipids.py`](tools/patch_molstar_lipids.py)) to
+recognize CHARMM membrane residues — phospholipids, cholesterol, sphingomyelin,
+and friends — so they render as lipids rather than unknown het groups.
+
+**Phase 8: distinct lipid colors.** Membrane residue names are given distinct,
+stable Residue-Name colors so different lipid species are visually separable in a
+crowded bilayer.
+
+**Phase 9: Docker packaging.** A full image (bundling the `convert` + `process`
+extras) and a `docker-compose.yml`; see the [Docker](#docker) section.
+
 ## Install
 
 Requires Python ≥ 3.10. Installing the package puts an **`mdview`** command on
@@ -158,6 +170,10 @@ from `docker/Dockerfile` for a much smaller image.
   `convert_available`/`process_available` flags. Sandbox-guarded to the root.
 - `GET /api/files` — the whole-tree recursive listing (legacy; the UI uses
   `/api/browse`).
+- `GET /api/match-topology?coords={relpath}` — for a coordinate-bearing structure,
+  finds topology files (`.psf`/`.prmtop`) in the same folder or an ancestor whose
+  **atom count matches**, so the UI can offer the ⚛ bonds pairing. Requires the
+  `convert` extra.
 - `GET /api/file/{relpath}` — serves one file's raw bytes — structures,
   topologies (`.psf`/`.prmtop`), and binary trajectories (`.dcd`/`.xtc`/…)
   (path-traversal guarded; restricted to the data root and known extensions).
@@ -176,6 +192,8 @@ from `docker/Dockerfile` for a much smaller image.
   `src/mdview/static/vendor/molstar/` (no frontend build step required).
 
 ## Roadmap
+
+See [ROADMAP.md](ROADMAP.md) for the full plan. Nearest items:
 
 - **Async processing** — `POST /api/prepare` is currently synchronous, so the
   first prepare of a very large trajectory blocks the request (the cache makes
