@@ -38,19 +38,37 @@ Test suite: 83 tests across 11 files.
 
 ## Mid-term (reach / deployment)
 
-- **Optional authentication.** Today `--host 0.0.0.0` exposes an unauthenticated
-  server. Add an opt-in token (`--token` / env) so a non-tunnel deployment behind
-  a reverse proxy is safe, plus documented nginx/Caddy examples.
-- **Shareable view state.** Serialize the current Mol\* state (camera,
-  representations, selections, loaded pair) into a URL or a small saved snapshot,
-  so a view can be reopened or handed to a colleague.
+- **VMD-like atom selections & representations.** Add a selection box that takes a
+  VMD/MDAnalysis-style string — `resname POPC`, `chain A and resid 1 to 40`,
+  `within 5 of resname ANE5AC`, `not water` — and:
+  - highlights / isolates the selection in the Mol\* viewer,
+  - drives per-selection representations (e.g. the selection as licorice, the rest
+    as cartoon), and
+  - feeds the existing Phase-4 server-side strip (which already parses MDAnalysis
+    selections), so one language covers both viewing and processing.
+
+  The wrinkle is three selection dialects — VMD, MDAnalysis, and Mol\*'s own query
+  language. First cut: support a common subset (`name` / `resname` / `resid` /
+  `chain` / `index` + `and`/`or`/`not` + `within … of …`) that maps cleanly to all
+  three; MDAnalysis on the server already parses the full string for the strip.
+  Then grow a small translator from the VMD-ish mini-language to Mol\* queries for
+  the browser side. This is the backbone for representation presets (membrane /
+  protein+glycans) below.
 - **Trajectory / movie export.** Extend the Phase-6 render path to capture a frame
   range to an MP4/GIF on the server (reuse the supersampling + `--render-dir`
   plumbing).
+- **Shareable view state.** Serialize the current Mol\* state (camera,
+  representations, selections, loaded pair) into a URL or a small saved snapshot,
+  so a view can be reopened or handed to a colleague.
 - **Broaden topology matching.** Atom-count matching is the current key; add
   filename-stem matching and better disambiguation when several topologies match
   (the pestifer build dir has ~103 PDBs / 8 stage-prefixed PSFs). Surface *why* a
   match was chosen.
+- **Optional authentication — only if you expose `--host 0.0.0.0`.** The default
+  `--host 127.0.0.1` is reachable only through an SSH tunnel, which already
+  authenticates and encrypts, so no app-level auth is needed for the normal
+  workflow. This matters *only* when binding `0.0.0.0` to serve without a tunnel:
+  add an opt-in token (`--token` / env) plus reverse-proxy (nginx/Caddy) examples.
 
 ## Longer-term / ideas
 
@@ -58,9 +76,7 @@ Test suite: 83 tests across 11 files.
   cases, assemblies; verify 6-char CHARMM resnames survive ParmEd's MOL2 writer
   end-to-end (glycan-symbol correctness).
 - **Representation presets.** One-click "membrane", "protein + glycans", "cartoon +
-  ligand" setups tuned for MD systems.
-- **Selection helpers.** MDAnalysis/VMD-style selection box that drives both the
-  server-side strip and the in-browser Mol\* selection.
+  ligand" setups tuned for MD systems — built on the selection engine above.
 - **Publish to PyPI** as `mdview-web`; slim `browse+play`-only Docker variant;
   CI (lint + the test suite) on push.
 
