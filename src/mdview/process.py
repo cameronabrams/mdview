@@ -18,8 +18,14 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
+import shutil
 import tempfile
 from pathlib import Path
+from typing import Callable
+
+# Reports processing progress as (frames_done, frames_total).
+ProgressCb = Callable[[int, int], None]
 
 # Residue names treated as solvent / ions by the "strip solvent" preset. The
 # free-text selection box overrides this for anything unusual.
@@ -70,25 +76,106 @@ def cache_key(
     return hashlib.sha256(payload.encode()).hexdigest()
 
 
-def _paths(key: str) -> tuple[Path, Path]:
-    d = CACHE_DIR / key
+def _paths(cache_dir: Path, key: str) -> tuple[Path, Path]:
+    d = cache_dir / key
     return d / "model.mol2", d / "traj.dcd"
+
+
+def _dir_size(path: Path) -> int:
+    """Total bytes of the files directly under one cache-entry directory."""
+    total = 0
+    try:
+        for f in path.iterdir():
+            if f.is_file():
+                total += f.stat().st_size
+    except OSError:
+        pass
+    return total
+
+
+def cache_stats(cache_dir: Path, max_bytes: int | None) -> dict:
+    """Summarize the on-disk cache: ``{dir, entries, bytes, max_bytes}``."""
+    entries = 0
+    total = 0
+    if cache_dir.is_dir():
+        for d in cache_dir.iterdir():
+            if d.is_dir():
+                entries += 1
+                total += _dir_size(d)
+    return {"dir": str(cache_dir), "entries": entries, "bytes": total,
+            "max_bytes": max_bytes}
+
+
+def clear_cache(cache_dir: Path) -> dict:
+    """Remove every cache entry; returns ``{cleared, bytes}`` freed."""
+    cleared = 0
+    freed = 0
+    if cache_dir.is_dir():
+        for d in list(cache_dir.iterdir()):
+            if d.is_dir():
+                freed += _dir_size(d)
+                shutil.rmtree(d, ignore_errors=True)
+                cleared += 1
+    return {"cleared": cleared, "bytes": freed}
+
+
+def evict(cache_dir: Path, max_bytes: int | None, *, protect: str | None = None) -> int:
+    """Trim the cache to ``max_bytes`` by dropping least-recently-used entries.
+
+    Recency is the entry directory's mtime, which :func:`prepare` bumps on every
+    cache hit. ``protect`` (a key) is never evicted — pass the entry just written
+    so a fresh, larger-than-the-rest result can't delete itself. Returns bytes
+    freed. A ``None``/``0`` cap disables eviction.
+    """
+    if not max_bytes or max_bytes <= 0 or not cache_dir.is_dir():
+        return 0
+    infos = []  # (mtime, size, dir)
+    total = 0
+    for d in cache_dir.iterdir():
+        if not d.is_dir():
+            continue
+        size = _dir_size(d)
+        total += size
+        try:
+            mtime = d.stat().st_mtime
+        except OSError:
+            mtime = 0.0
+        infos.append((mtime, size, d))
+    if total <= max_bytes:
+        return 0
+    infos.sort(key=lambda t: t[0])  # oldest first
+    freed = 0
+    for _mtime, size, d in infos:
+        if total <= max_bytes:
+            break
+        if protect is not None and d.name == protect:
+            continue
+        shutil.rmtree(d, ignore_errors=True)
+        total -= size
+        freed += size
+    return freed
 
 
 def prepare(
     top: Path,
     traj: Path,
     *,
+    cache_dir: Path = CACHE_DIR,
+    max_bytes: int | None = None,
     select: str = "all",
     stride: int = 1,
     align: bool = False,
     align_select: str = DEFAULT_ALIGN_SELECTION,
+    progress: ProgressCb | None = None,
 ) -> dict:
     """Process (or return a cached) trajectory; returns metadata + the cache key.
 
     Result: ``{"id", "n_atoms", "n_frames"}``. The model/traj files live at the
-    paths from :func:`_paths` for that id. Raises ``ProcessUnavailable`` without
-    MDAnalysis and ``ProcessError`` on any selection/IO failure.
+    paths from :func:`_paths` for that id. ``progress`` (if given) is called with
+    ``(frames_done, frames_total)`` as frames are written. After a fresh run the
+    cache is trimmed to ``max_bytes`` (``None`` = no cap). Raises
+    ``ProcessUnavailable`` without MDAnalysis and ``ProcessError`` on any
+    selection/IO failure.
     """
     if stride < 1:
         raise ProcessError("stride must be >= 1")
@@ -96,24 +183,33 @@ def prepare(
     key = cache_key(
         top, traj, select=select, stride=stride, align=align, align_select=align_select
     )
-    model_path, traj_path = _paths(key)
-    if model_path.is_file() and traj_path.is_file():
-        meta = _paths(key)[0].parent / "meta.json"
-        if meta.is_file():
-            info = json.loads(meta.read_text())
-            return {"id": key, **info}
+    model_path, traj_path = _paths(cache_dir, key)
+    meta = model_path.parent / "meta.json"
+    if model_path.is_file() and traj_path.is_file() and meta.is_file():
+        # Cache hit: bump the entry's mtime so LRU eviction treats it as recent.
+        try:
+            os.utime(model_path.parent)
+        except OSError:
+            pass
+        info = json.loads(meta.read_text())
+        if progress is not None:
+            progress(info["n_frames"], info["n_frames"])
+        return {"id": key, **info}
 
     info = _run(
         top, traj, model_path, traj_path,
         select=select, stride=stride, align=align, align_select=align_select,
+        progress=progress,
     )
-    (model_path.parent / "meta.json").write_text(json.dumps(info))
+    meta.write_text(json.dumps(info))
+    evict(cache_dir, max_bytes, protect=key)
     return {"id": key, **info}
 
 
 def _run(
     top: Path, traj: Path, model_path: Path, traj_path: Path,
     *, select: str, stride: int, align: bool, align_select: str,
+    progress: ProgressCb | None = None,
 ) -> dict:
     try:
         import MDAnalysis as mda
@@ -155,6 +251,14 @@ def _run(
     u.trajectory[0]
     frame0 = kept.positions.copy()
 
+    # Frame total for progress reporting (len() on a sliced trajectory is cheap).
+    try:
+        n_total = len(u.trajectory[::stride])
+    except Exception:
+        n_total = 0
+    if progress is not None:
+        progress(0, n_total)
+
     model_path.parent.mkdir(parents=True, exist_ok=True)
     n_frames = 0
     try:
@@ -164,6 +268,8 @@ def _run(
                     mda_align.alignto(u.atoms, ref.atoms, select=align_select)
                 writer.write(kept)
                 n_frames += 1
+                if progress is not None:
+                    progress(n_frames, n_total)
     except Exception as exc:
         raise ProcessError(f"failed writing trajectory: {exc}") from exc
 

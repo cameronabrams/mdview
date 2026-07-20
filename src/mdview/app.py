@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 from pathlib import Path
 
@@ -20,11 +21,15 @@ from .convert import (
     parmed_available,
 )
 from .files import browse, match_topologies, resolve_within_root, scan
+from .jobs import JobRegistry
 from .process import (
     DEFAULT_ALIGN_SELECTION,
     STRIP_SOLVENT_FILTER,
     ProcessError,
     ProcessUnavailable,
+    cache_key,
+    cache_stats,
+    clear_cache,
     prepare,
     process_available,
 )
@@ -33,6 +38,7 @@ from .render import RenderError, list_renders, safe_render_path, save_png
 
 STATIC_DIR = Path(__file__).parent / "static"
 _HEX64 = re.compile(r"^[0-9a-f]{64}$")
+_UUID_HEX = re.compile(r"^[0-9a-f]{32}$")
 
 
 class RenderRequest(BaseModel):
@@ -62,6 +68,19 @@ def create_app(settings: Settings) -> FastAPI:
     """Build a FastAPI app that serves the viewer SPA and a structure-file API."""
     app = FastAPI(title="mdview", version=__version__)
     app.state.settings = settings
+    app.state.jobs = JobRegistry()
+
+    def _prepare_payload(key: str, info: dict) -> dict:
+        """Response shape for a completed prepare: URLs + atom/frame counts."""
+        return {
+            "id": key,
+            "model_url": f"/api/prepared/{key}/model",
+            "trajectory_url": f"/api/prepared/{key}/trajectory",
+            "model_format": "mol2",
+            "trajectory_format": "dcd",
+            "n_atoms": info["n_atoms"],
+            "n_frames": info["n_frames"],
+        }
 
     @app.middleware("http")
     async def revalidate_static(request, call_next):
@@ -169,11 +188,13 @@ def create_app(settings: Settings) -> FastAPI:
 
     @app.post("/api/prepare")
     def api_prepare(req: PrepareRequest) -> dict:
-        """Strip/stride/align a trajectory, cache the result, return its URLs.
+        """Submit a strip/stride/align job (or return a cached result instantly).
 
         Produces a reduced bonded model (mol2) + processed trajectory (dcd),
-        content-addressed so identical requests are instant. Both input paths are
-        guarded against the data root.
+        content-addressed so identical requests are instant. A cache hit returns
+        ``{"status": "done", ...urls}`` synchronously; otherwise the heavy work is
+        queued and this returns ``{"job_id", "status": "queued"|"running"}`` — poll
+        ``GET /api/prepare/{job_id}``. Both input paths are guarded against the root.
         """
         top = resolve_within_root(settings.root, req.top)
         traj = resolve_within_root(settings.root, req.traj)
@@ -181,37 +202,70 @@ def create_app(settings: Settings) -> FastAPI:
             raise HTTPException(status_code=404, detail="topology not found")
         if traj is None:
             raise HTTPException(status_code=404, detail="trajectory not found")
-        try:
-            result = prepare(
-                top, traj,
-                select=req.effective_select(), stride=req.stride,
-                align=req.align, align_select=req.align_select,
+        if not process_available():
+            raise HTTPException(
+                status_code=501,
+                detail="trajectory processing requires the 'process' extra: "
+                "uv sync --extra process",
             )
-        except ProcessUnavailable as exc:
-            raise HTTPException(status_code=501, detail=str(exc)) from exc
-        except ProcessError as exc:
-            raise HTTPException(status_code=422, detail=str(exc)) from exc
-        return {
-            "id": result["id"],
-            "model_url": f"/api/prepared/{result['id']}/model",
-            "trajectory_url": f"/api/prepared/{result['id']}/trajectory",
-            "model_format": "mol2",
-            "trajectory_format": "dcd",
-            "n_atoms": result["n_atoms"],
-            "n_frames": result["n_frames"],
-        }
+        if req.stride < 1:
+            raise HTTPException(status_code=422, detail="stride must be >= 1")
+
+        select = req.effective_select()
+        cache_dir = settings.cache_dir
+        key = cache_key(
+            top, traj, select=select, stride=req.stride,
+            align=req.align, align_select=req.align_select,
+        )
+        # Synchronous fast path: an already-cached result skips the job queue.
+        model_path, traj_path = _prepared_paths(cache_dir, key)
+        meta = model_path.parent / "meta.json"
+        if model_path.is_file() and traj_path.is_file() and meta.is_file():
+            info = json.loads(meta.read_text())
+            return {"status": "done", "job_id": None, **_prepare_payload(key, info)}
+
+        def work(progress) -> dict:
+            result = prepare(
+                top, traj, cache_dir=cache_dir, max_bytes=settings.cache_max_bytes,
+                select=select, stride=req.stride, align=req.align,
+                align_select=req.align_select, progress=progress,
+            )
+            return _prepare_payload(result["id"], result)
+
+        job = app.state.jobs.submit(key, work)
+        return job.as_dict()
+
+    @app.get("/api/prepare/{job_id}")
+    def api_prepare_status(job_id: str) -> dict:
+        """Poll a prepare job: ``{status, current, total}`` (+ URLs when done)."""
+        if not _UUID_HEX.match(job_id):
+            raise HTTPException(status_code=404, detail="unknown job")
+        job = app.state.jobs.get(job_id)
+        if job is None:
+            raise HTTPException(status_code=404, detail="unknown job")
+        return job.as_dict()
 
     @app.get("/api/prepared/{key}/{which}")
     def api_prepared(key: str, which: str) -> FileResponse:
         """Serve a cached processed model/trajectory by its content-address id."""
         if not _HEX64.match(key) or which not in ("model", "trajectory"):
             raise HTTPException(status_code=404, detail="not found")
-        model_path, traj_path = _prepared_paths(key)
+        model_path, traj_path = _prepared_paths(settings.cache_dir, key)
         path = model_path if which == "model" else traj_path
         if not path.is_file():
             raise HTTPException(status_code=404, detail="prepared file not found")
         media_type = "chemical/x-mol2" if which == "model" else "application/octet-stream"
         return FileResponse(path, media_type=media_type)
+
+    @app.get("/api/cache")
+    def api_cache() -> dict:
+        """Report the processing cache's size, entry count, and configured cap."""
+        return cache_stats(settings.cache_dir, settings.cache_max_bytes)
+
+    @app.delete("/api/cache")
+    def api_cache_clear() -> dict:
+        """Empty the processing cache; returns entries + bytes freed."""
+        return clear_cache(settings.cache_dir)
 
     @app.post("/api/render")
     def api_render(req: RenderRequest) -> dict:
@@ -251,7 +305,17 @@ def _app_from_env() -> FastAPI:
     """
     import os
 
+    from .config import parse_size
+
     root = os.environ.get("MDVIEW_ROOT", ".")
+    kwargs: dict = {}
     render_dir = os.environ.get("MDVIEW_RENDER_DIR")
-    kwargs = {"render_dir": render_dir} if render_dir else {}
+    if render_dir:
+        kwargs["render_dir"] = render_dir
+    cache_dir = os.environ.get("MDVIEW_CACHE_DIR")
+    if cache_dir:
+        kwargs["cache_dir"] = cache_dir
+    cache_max = os.environ.get("MDVIEW_CACHE_MAX")
+    if cache_max is not None:
+        kwargs["cache_max_bytes"] = parse_size(cache_max)
     return create_app(Settings(root=root, **kwargs))

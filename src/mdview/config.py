@@ -5,6 +5,39 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from .process import CACHE_DIR
+
+# Default cap for the on-disk processing cache. Processed trajectories are small
+# relative to the raw runs, so a few GB holds many; override with --cache-max.
+DEFAULT_CACHE_MAX_BYTES: int = 5 * 1024**3  # 5 GiB
+
+
+def parse_size(text: str | int | None) -> int | None:
+    """Parse a human size (``"5G"``, ``"500M"``, ``"2048"``) to bytes.
+
+    ``0``/``""``/``none``/``unlimited``/``off`` mean "no cap" (returns ``None``).
+    Suffixes K/M/G/T are binary (1024-based); a trailing ``B`` is ignored.
+    """
+    if text is None:
+        return None
+    s = str(text).strip().lower()
+    if s in ("", "0", "none", "unlimited", "off"):
+        return None
+    if s.endswith("b"):  # accept a trailing byte marker: 5GB, 500MB, 2048B
+        s = s[:-1].strip()
+    units = {"k": 1024, "m": 1024**2, "g": 1024**3, "t": 1024**4}
+    mult = 1
+    if s and s[-1] in units:
+        mult = units[s[-1]]
+        s = s[:-1].strip()
+    try:
+        value = float(s)
+    except ValueError as exc:
+        raise ValueError(f"bad size {text!r} (try e.g. 5G, 500M, 0)") from exc
+    if value < 0:
+        raise ValueError(f"size cannot be negative: {text!r}")
+    return int(value * mult) or None
+
 # Structure formats Mol* can load directly in the browser. The values are Mol*'s
 # own format ids (used as the `model` format when loading), so a .pdb is "pdb",
 # .cif is "mmcif", etc. — single-file structures that carry coordinates.
@@ -87,6 +120,10 @@ class Settings:
     host: str = "127.0.0.1"
     port: int = 8000
     render_dir: Path = field(default_factory=lambda: Path.home() / "mdview-renders")
+    # On-disk processing cache (Phase 4). `cache_dir=None` falls back to the shared
+    # default; `cache_max_bytes=None` disables eviction (unbounded growth).
+    cache_dir: Path | None = None
+    cache_max_bytes: int | None = DEFAULT_CACHE_MAX_BYTES
     extensions: dict[str, str] = field(default_factory=lambda: dict(STATIC_EXTENSIONS))
 
     def __post_init__(self) -> None:
@@ -95,6 +132,10 @@ class Settings:
             raise NotADirectoryError(f"data root is not a directory: {self.root}")
         # Renders land here; created lazily on first write (need not exist yet).
         self.render_dir = Path(self.render_dir).expanduser().resolve()
+        # Cache dir is created lazily on first prepare; default is process.CACHE_DIR.
+        self.cache_dir = (
+            Path(self.cache_dir).expanduser().resolve() if self.cache_dir else CACHE_DIR
+        )
 
     def format_for(self, suffix: str) -> str | None:
         """Mol* format name for a file suffix, or None if unsupported."""

@@ -42,10 +42,13 @@ selection), and **align** (superpose every frame onto frame 0 to remove
 translational/rotational drift). This makes multi-GB runs usable over a thin
 tunnel and the motion legible. The reduced trajectory is written by MDAnalysis;
 the matching reduced **model** (atom count changes when stripping) is built with
-ParmEd as MOL2 so bonds survive. Results are cached on disk, content-addressed by
-(files + options), so repeated loads are instant. In the UI the **Trajectories**
-section gains stride / strip-solvent / selection / align controls. Enable with
-`uv sync --extra process`.
+ParmEd as MOL2 so bonds survive. Processing runs **asynchronously** — the browser
+submits a job and polls for frame-by-frame progress instead of hanging on one long
+request. Results are cached on disk, content-addressed by (files + options), so
+repeated loads are instant and return synchronously; the cache is trimmed to a
+size cap (`--cache-max`, default 5 GiB) by dropping least-recently-used entries. In
+the UI the **Trajectories** section gains stride / strip-solvent / selection /
+align controls with a progress readout. Enable with `uv sync --extra process`.
 
 **Phase 5: directory browser.** Point `--root` at a broad directory and navigate
 its subfolders in the sidebar (breadcrumb + current folder), rather than reading a
@@ -118,7 +121,9 @@ uv run mdview serve --root /path/to/your/structures --port 8000
 
 Point `--root` at a broad directory (e.g. `~/` or a simulations tree) and browse
 its subfolders in the sidebar to find a system. Rendered images are written to
-`--render-dir` (default `~/mdview-renders`). Binds `127.0.0.1` by default
+`--render-dir` (default `~/mdview-renders`); the trajectory-processing cache lives
+under `--cache-dir` (default `<tmp>/mdview-cache`) and is capped by `--cache-max`
+(default `5G`; `0` disables eviction). Binds `127.0.0.1` by default
 (tunnel-only; no authentication); pass `--host 0.0.0.0` to expose it on all
 interfaces (only behind a trusted network or reverse proxy — there is no auth).
 
@@ -182,9 +187,14 @@ from `docker/Dockerfile` for a much smaller image.
   bonds), or mmCIF/PDB (which drop connectivity). Both paths guarded to the data
   root. Requires the `convert` extra.
 - `POST /api/prepare` — strip/stride/align a `{top, traj, select, strip, stride,
-  align, align_select}` request; returns cached `model_url` + `trajectory_url`
-  plus atom/frame counts. Requires the `process` extra.
+  align, align_select}` request. A cached result returns `{"status": "done", …}`
+  synchronously; otherwise the work is queued and it returns `{"job_id",
+  "status"}`. Requires the `process` extra.
+- `GET /api/prepare/{job_id}` — poll a queued job: `{status, current, total}`,
+  plus `model_url`/`trajectory_url` + atom/frame counts once `status == "done"`.
 - `GET /api/prepared/{id}/{model|trajectory}` — serve a cached processed result.
+- `GET /api/cache` — processing-cache stats (`dir`, `entries`, `bytes`,
+  `max_bytes`); `DELETE /api/cache` empties it.
 - `POST /api/render` — save a captured PNG (data URI) into `--render-dir`;
   `GET /api/renders` lists them, `GET /api/renders/{name}` serves one. Filenames
   are basename-sanitized to the render directory.
@@ -193,13 +203,9 @@ from `docker/Dockerfile` for a much smaller image.
 
 ## Roadmap
 
-See [ROADMAP.md](ROADMAP.md) for the full plan. Nearest items:
-
-- **Async processing** — `POST /api/prepare` is currently synchronous, so the
-  first prepare of a very large trajectory blocks the request (the cache makes
-  repeats instant). A job/progress API would smooth this over.
-- **Cache eviction** — the content-addressed processing cache under the system
-  temp dir has no size/age cap yet.
+See [ROADMAP.md](ROADMAP.md) for the full plan. Recently shipped the async
+job/progress API for `POST /api/prepare` and LRU cache eviction (`--cache-max`);
+next up are optional authentication, shareable view state, and movie export.
 
 ## License
 

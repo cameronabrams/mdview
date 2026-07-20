@@ -285,6 +285,29 @@ function processingRequested() {
   );
 }
 
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// Drive a /api/prepare submission to completion. `first` is the POST response;
+// if it isn't already done, poll GET /api/prepare/{job_id} until it is, updating
+// the progress note as frames are written. Resolves with the final payload.
+async function pollPrepare(first) {
+  let data = first;
+  while (data.status && data.status !== "done") {
+    if (data.status === "error") throw new Error(data.detail || "processing failed");
+    if (data.total > 0) {
+      const pct = Math.round((data.current / data.total) * 100);
+      procNote.textContent = `Processing… frame ${data.current}/${data.total} (${pct}%)`;
+    } else {
+      procNote.textContent = "Processing on the server…";
+    }
+    await sleep(400);
+    const resp = await fetch(`/api/prepare/${data.job_id}`);
+    data = await resp.json();
+    if (!resp.ok) throw new Error(data.detail || `HTTP ${resp.status}`);
+  }
+  return data;
+}
+
 async function loadProcessed(model, traj) {
   procNote.textContent = "Processing on the server…";
   procNote.className = "ok";
@@ -302,8 +325,10 @@ async function loadProcessed(model, traj) {
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body),
   });
-  const data = await resp.json();
+  let data = await resp.json();
   if (!resp.ok) throw new Error(data.detail || `HTTP ${resp.status}`);
+  // A cache hit returns status "done" immediately; otherwise poll the job.
+  data = await pollPrepare(data);
   procNote.textContent = `${data.n_atoms} atoms, ${data.n_frames} frames`;
   await viewer.plugin.clear();
   await viewer.loadTrajectory({

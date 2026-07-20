@@ -7,7 +7,7 @@ import sys
 from pathlib import Path
 
 from . import __version__
-from .config import Settings
+from .config import Settings, parse_size
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -38,6 +38,17 @@ def _build_parser() -> argparse.ArgumentParser:
         help="where rendered images are saved (default: ~/mdview-renders)",
     )
     serve.add_argument(
+        "--cache-dir",
+        type=Path,
+        default=None,
+        help="directory for the processing cache (default: <tmp>/mdview-cache)",
+    )
+    serve.add_argument(
+        "--cache-max",
+        default="5G",
+        help="processing-cache size cap, e.g. 5G / 500M / 0 to disable (default: 5G)",
+    )
+    serve.add_argument(
         "--reload", action="store_true", help="auto-reload on code changes (dev)"
     )
     return parser
@@ -50,17 +61,28 @@ def main(argv: list[str] | None = None) -> int:
         import uvicorn
 
         try:
+            cache_max_bytes = parse_size(args.cache_max)
+        except ValueError as exc:
+            print(f"mdview: --cache-max: {exc}", file=sys.stderr)
+            return 2
+        try:
             settings = Settings(
                 root=args.root, host=args.host, port=args.port,
                 render_dir=args.render_dir,
+                cache_dir=args.cache_dir, cache_max_bytes=cache_max_bytes,
             )
         except (NotADirectoryError, FileNotFoundError) as exc:
             print(f"mdview: {exc}", file=sys.stderr)
             return 2
 
+        cap = (
+            f"{settings.cache_max_bytes / 1024**3:.1f} GiB"
+            if settings.cache_max_bytes else "unlimited"
+        )
         print(f"mdview {__version__}: serving {settings.root}")
         print(f"  -> http://{settings.host}:{settings.port}")
         print(f"  renders -> {settings.render_dir}")
+        print(f"  cache -> {settings.cache_dir} (cap: {cap})")
         if settings.host == "127.0.0.1":
             print(f"  tunnel from your laptop: ssh -L {settings.port}:localhost:"
                   f"{settings.port} <this-host>")
@@ -71,6 +93,8 @@ def main(argv: list[str] | None = None) -> int:
 
             os.environ["MDVIEW_ROOT"] = str(settings.root)
             os.environ["MDVIEW_RENDER_DIR"] = str(settings.render_dir)
+            os.environ["MDVIEW_CACHE_DIR"] = str(settings.cache_dir)
+            os.environ["MDVIEW_CACHE_MAX"] = str(settings.cache_max_bytes or 0)
             uvicorn.run(
                 "mdview.app:_app_from_env",
                 factory=True,

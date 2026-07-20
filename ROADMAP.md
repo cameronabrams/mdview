@@ -20,21 +20,21 @@ topology pairing.
 | 8 | Distinct residue-name colors for lipids | — |
 | 9 | Docker packaging (full image + docker-compose) | — |
 | + | PDB-centric topology pairing (⚛ bonds: atom-count match, bonds + SNFG glycan symbols) | `convert` |
+| + | Async `/api/prepare` job+progress API; LRU cache eviction (`--cache-dir`/`--cache-max`, `/api/cache`) | `process` |
 
-Test suite: 57 tests across 10 files.
+Test suite: 83 tests across 11 files.
 
 ## Near-term (correctness / rough edges)
 
-- **Async `/api/prepare`.** Currently synchronous, so the first strip/stride/align
-  of a very large trajectory blocks the request (repeats are instant from cache).
-  Add a job + progress API (submit → poll → stream), with a progress bar in the
-  Trajectories panel.
-- **Processing-cache eviction.** The content-addressed cache under the system temp
-  dir has no size/age cap. Add an LRU or total-size ceiling, a `--cache-dir` /
-  `--cache-max` flag, and a way to inspect/clear it.
-- **Reconcile docs on every phase.** Keep README Status, the `/api/*` "How it
-  works" list, and this file in lockstep as features land (Phase 7–9 drift already
-  happened once). Add `/api/match-topology` to the README endpoint list.
+- ~~**Async `/api/prepare`.**~~ *Done.* `POST /api/prepare` submits a job (cache
+  hits still return synchronously) and the browser polls `GET /api/prepare/{job_id}`
+  for frame-by-frame progress; a single worker thread serializes the heavy work.
+- ~~**Processing-cache eviction.**~~ *Done.* The cache is trimmed to `--cache-max`
+  (default 5 GiB, `0` disables) by dropping least-recently-used entries; `--cache-dir`
+  relocates it and `GET`/`DELETE /api/cache` inspect and clear it.
+- ~~**Reconcile docs on every phase.**~~ *Done for now.* README Status, the `/api/*`
+  list, and this file are back in sync (Phases 7–9, `/api/match-topology`, the
+  prepare/cache endpoints). Keep them in lockstep as features land.
 
 ## Mid-term (reach / deployment)
 
