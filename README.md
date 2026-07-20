@@ -113,14 +113,29 @@ pip install "mdview-web[process] @ git+https://github.com/cameronabrams/mdview" 
 uv sync --extra process --extra dev    # full features + test deps
 ```
 
+To get an **`mdview` command on your `PATH`** that works from any directory —
+handy for pointing it at whatever simulation folder you're in — install the clone
+as an editable [uv tool](https://docs.astral.sh/uv/concepts/tools/):
+
+```bash
+uv tool install --editable "/path/to/mdview[process]"   # global `mdview`, edits live
+```
+
+Editable means code changes in the clone take effect without reinstalling (re-run
+only when `pyproject.toml` dependencies change). Uninstall with
+`uv tool uninstall mdview-web`.
+
 ## Run
 
 ```bash
-uv run mdview serve --root /path/to/your/structures --port 8000
+mdview serve --root /path/to/your/structures --port 8000   # if installed on PATH
+uv run mdview serve --root /path/to/your/structures        # or, from the clone
 ```
 
 Point `--root` at a broad directory (e.g. `~/` or a simulations tree) and browse
-its subfolders in the sidebar to find a system. Rendered images are written to
+its subfolders in the sidebar to find a system. **With no `--root`, mdview serves
+the current working directory**, so from an installed command you can just `cd`
+into a run folder and launch `mdview serve`. Rendered images are written to
 `--render-dir` (default `~/mdview-renders`); the trajectory-processing cache lives
 under `--cache-dir` (default `<tmp>/mdview-cache`) and is capped by `--cache-max`
 (default `5G`; `0` disables eviction). Binds `127.0.0.1` by default
