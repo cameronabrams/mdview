@@ -62,7 +62,7 @@ Test suite: 83 tests across 11 files.
 - **Selection helpers.** MDAnalysis/VMD-style selection box that drives both the
   server-side strip and the in-browser Mol\* selection.
 - **Publish to PyPI** as `mdview-web`; slim `browse+play`-only Docker variant;
-  CI (lint + the 57-test suite) on push.
+  CI (lint + the test suite) on push.
 
 ## Non-goals (for now)
 
