@@ -29,6 +29,10 @@ const renderNote = el("render-note");
 const renderGallery = el("render-gallery");
 const statusEl = el("status");
 const rootLabel = el("root-label");
+const selInput = el("sel-input");
+const selApplyBtn = el("sel-apply");
+const selClearBtn = el("sel-clear");
+const selNoteEl = el("sel-note");
 
 function setStatus(msg) {
   statusEl.textContent = msg;
@@ -490,6 +494,92 @@ async function renderToServer() {
   }
 }
 
+// --- atom selection (docs/design/atom-selections.md) -----------------------
+// Parse an mdview selection string (select.js), run it against the loaded
+// structure via molstar.lib.structure, and highlight/select/focus the matches.
+// Phase A: highlight + select + focus. Representations/isolate come later.
+function setSelNote(msg, ok) {
+  selNoteEl.textContent = msg;
+  selNoteEl.className = ok ? "ok" : "";
+}
+
+function currentStructureData() {
+  const cur = viewer.plugin.managers.structure.hierarchy.current;
+  const s = cur && cur.structures && cur.structures[0];
+  return s && s.cell && s.cell.obj ? s.cell.obj.data : null;
+}
+
+function applySelection() {
+  const expr = (selInput.value || "").trim();
+  if (!expr) { clearSelection(); return; }
+
+  let predicate;
+  try {
+    predicate = MDSelect.compilePredicate(MDSelect.parse(expr));
+  } catch (err) {
+    setSelNote(err.message || String(err), false);
+    return;
+  }
+
+  const structure = currentStructureData();
+  if (!structure) { setSelNote("Load a structure first.", false); return; }
+
+  const S = molstar.lib && molstar.lib.structure;
+  if (!S || !S.Queries || !S.QueryContext) {
+    setSelNote("Mol* query API unavailable in this build.", false);
+    return;
+  }
+  const P = S.StructureProperties;
+
+  try {
+    // The atoms generator calls atomTest per atom with a QueryContext whose
+    // `element` Location it mutates in place; bind the accessor to it once.
+    let acc = null;
+    const query = S.Queries.generators.atoms({
+      atomTest: (ctx) => {
+        const l = ctx.element;
+        if (!acc) {
+          acc = {
+            resname: () => P.atom.label_comp_id(l),
+            name: () => P.atom.label_atom_id(l),
+            element: () => P.atom.type_symbol(l),
+            resid: () => P.residue.auth_seq_id(l),
+            index: () => P.atom.sourceIndex(l),
+            chain: () => P.chain.auth_asym_id(l),
+            segid: () => P.chain.label_asym_id(l),
+          };
+        }
+        return predicate(acc);
+      },
+    });
+
+    const sel = query(new S.QueryContext(structure));
+    const n = S.StructureSelection.unionStructure(sel).elementCount;
+    if (n === 0) { setSelNote("0 atoms matched.", true); return; }
+
+    const loci = S.StructureSelection.toLociWithSourceUnits(sel);
+    const m = viewer.plugin.managers;
+    m.structure.selection.fromLoci("set", loci);
+    m.interactivity.lociHighlights.highlightOnly({ loci });
+    m.camera.focusLoci(loci);
+    setSelNote(`${n} atom${n === 1 ? "" : "s"} selected.`, true);
+  } catch (err) {
+    console.error(err);
+    setSelNote(`Selection failed: ${err.message || err}`, false);
+  }
+}
+
+function clearSelection() {
+  try {
+    const m = viewer.plugin.managers;
+    m.structure.selection.clear();
+    m.interactivity.lociHighlights.clearHighlights();
+  } catch (err) {
+    console.error(err);
+  }
+  setSelNote("", true);
+}
+
 async function main() {
   viewer = await molstar.Viewer.create("viewer", {
     layoutIsExpanded: false,
@@ -499,6 +589,9 @@ async function main() {
   });
   trajLoadBtn.addEventListener("click", onTrajLoad);
   renderBtn.addEventListener("click", renderToServer);
+  selApplyBtn.addEventListener("click", applySelection);
+  selClearBtn.addEventListener("click", clearSelection);
+  selInput.addEventListener("keydown", (e) => { if (e.key === "Enter") applySelection(); });
   await loadRenders();
   await loadDir("");
 }

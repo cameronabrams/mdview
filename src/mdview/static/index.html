@@ -75,6 +75,16 @@
     .traj label.chk input { flex: 0 0 auto; }
     #proc-note { color: #d98b8b; font-size: 11px; padding: 2px 0; min-height: 0; }
     #proc-note.ok { color: #8b909a; }
+    #select-panel { border-top: 1px solid #2c2f38; padding: 8px 14px; }
+    #select-panel .section-head { padding: 0 0 6px; border-top: none; }
+    #select-panel .row { display: flex; gap: 6px; margin-bottom: 6px; }
+    #sel-input { flex: 1; min-width: 0; background: #14161b; color: #d7dae0;
+      border: 1px solid #2c2f38; border-radius: 3px; padding: 3px; font-size: 12px; }
+    #select-panel button { flex: 1; background: #3a3f4d; color: #fff; border: none;
+      border-radius: 3px; padding: 5px 9px; cursor: pointer; font-size: 12px; }
+    #select-panel button:hover { background: #474d5e; }
+    #sel-note { color: #d98b8b; font-size: 11px; padding: 2px 0 0; min-height: 0; }
+    #sel-note.ok { color: #8b909a; }
     #render-panel { border-top: 1px solid #2c2f38; padding: 8px 14px; }
     #render-panel .section-head { padding: 0 0 6px; border-top: none; }
     #render-controls { display: flex; gap: 6px; align-items: center; margin-bottom: 6px; }
@@ -136,6 +146,18 @@
         </div>
         <div id="empty-note" hidden>No loadable files in this folder.</div>
       </div>
+      <div id="select-panel">
+        <div class="section-head">Selection</div>
+        <div class="row">
+          <input id="sel-input" type="text"
+                 placeholder="e.g. resname POPC and chain A" />
+        </div>
+        <div class="row">
+          <button id="sel-apply">Select</button>
+          <button id="sel-clear">Clear</button>
+        </div>
+        <div id="sel-note"></div>
+      </div>
       <div id="render-panel">
         <div class="section-head">Render</div>
         <div id="render-controls">
@@ -155,6 +177,7 @@
     <main id="viewer"></main>
   </div>
   <script src="/vendor/molstar/molstar.js"></script>
+  <script src="/select.js"></script>
   <script src="/app.js"></script>
 </body>
 </html>
